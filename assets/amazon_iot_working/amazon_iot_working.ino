@@ -224,5 +224,5 @@ void loop() {
   client.loop();
 
   publishData();
-  delay(10000);  // Send data every 5s
+  delay(10000);  // Send data every 10s
 }
