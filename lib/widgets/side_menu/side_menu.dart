@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_colors.dart' as app_colors;
 import '../../data/menu_data.dart';
+import '../../services/storage_service.dart';
 import 'menu_item.dart';
 
 class SideMenu extends StatelessWidget {
@@ -89,19 +92,52 @@ class SideMenu extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16.0),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
+                // Logout Button (centered and minimal)
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    await StorageService.clearLogin();
+                    Get.offAllNamed('/login'); // Navigate back to login
+                  },
+                  icon: const Icon(Icons.logout, size: 18, color: Colors.white),
+                  label: const Text(
+                    'Logout',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Copyright
                 Center(
-                    child: Text('ELEVATE © 2025',
-                        style: TextStyle(
-                            color: app_colors.slateGrey, fontSize: 11))),
+                  child: Text(
+                    'ELEVATE © 2025',
+                    style: TextStyle(color: app_colors.slateGrey, fontSize: 11),
+                  ),
+                ),
                 const SizedBox(height: 4),
+                // Version text
                 Center(
-                    child: Text('6.5.10-beta',
-                        style: TextStyle(
-                            color: app_colors.slateGrey, fontSize: 11))),
+                  child: Text(
+                    '6.5.10-beta',
+                    style: TextStyle(color: app_colors.slateGrey, fontSize: 11),
+                  ),
+                ),
               ],
             ),
-          ),
+          )
+
         ],
       ),
     );

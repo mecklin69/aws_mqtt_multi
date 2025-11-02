@@ -37,6 +37,8 @@ dependencies:
   google_fonts: ^6.3.2
   get: ^4.7.2
   mqtt_client: ^10.11.1
+  get_storage: ^2.1.1
+  flutter_svg: ^2.2.1
 
 
 dev_dependencies:
