@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:marvino/services/aws_iot_services.dart';
-import 'package:marvino/services/storage_service.dart';
+import 'package:Elevate/services/aws_iot_services.dart';
+import 'package:Elevate/services/storage_service.dart';
 import 'constants/app_colors.dart' as app_colors;
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';

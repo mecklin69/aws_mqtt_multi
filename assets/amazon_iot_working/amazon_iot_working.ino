@@ -10,7 +10,7 @@ const char* password = "12345678";
 // ========== AWS IoT Core Details ==========
 const char* mqtt_server = "a1uik643utyg4s-ats.iot.ap-south-1.amazonaws.com";  // <-- Change this
 const int mqtt_port = 8883;
-const char* thingName = "esp8266_3";
+const char* thingName = "esp8266_2";
 
 // ========== AWS Certificates ==========
 static const char ca_cert[] PROGMEM = R"EOF(
@@ -129,10 +129,10 @@ bool connectAWS() {
           0,                           // QoS 0
           false,                       // Retain = false
           willPayload.c_str()          // LWT payload
-        )) 
+        ))
     {
       Serial.println("\n✅ Connected to AWS IoT!");
-      
+
       // Subscribe to all ESP topics using wildcards
       client.subscribe("esp8266/+/data");
       client.subscribe("esp8266/+/status");
@@ -140,7 +140,7 @@ bool connectAWS() {
       // Publish “connected” status for this device
       publishStatus("connected");
       return true;
-    } 
+    }
     else {
       Serial.print(".");
       Serial.print(" state="); Serial.println(client.state());
@@ -224,5 +224,5 @@ void loop() {
   client.loop();
 
   publishData();
-  delay(10000);  // Send data every 10s
+  delay(10000);  // Send data every 5s
 }

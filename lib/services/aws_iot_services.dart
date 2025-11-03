@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class AwsIotService extends GetxService {
   final String awsEndpoint = 'a1uik643utyg4s-ats.iot.ap-south-1.amazonaws.com';
@@ -50,31 +51,65 @@ class AwsIotService extends GetxService {
 
     client.onSubscribed = (topic) => print('📡 Subscribed: $topic');
     client.pongCallback = () => print('🏓 Ping response from AWS IoT');
-
-    try {
-      print('🔑 Loading certificates...');
-      final context = SecurityContext.defaultContext;
-      context.setTrustedCertificatesBytes(
-          (await rootBundle.load('assets/AmazonRootCA1.pem'))
-              .buffer
-              .asUint8List());
-      context.useCertificateChainBytes(
-          (await rootBundle.load('assets/flutter-certificate.pem.crt'))
-              .buffer
-              .asUint8List());
-      context.usePrivateKeyBytes(
-          (await rootBundle.load('assets/flutter-private.pem.key'))
-              .buffer
-              .asUint8List());
-      client.securityContext = context;
-      print('✅ Certificates loaded');
-    } catch (e) {
-      print('❌ Certificate load failed: $e');
-      onConnectionStatus?.call('Certificate load failed ❌');
-      return;
+    //
+    // try {
+    //   print('🔑 Loading certificates...');
+    //   final context = SecurityContext.defaultContext;
+    //   context.setTrustedCertificatesBytes(
+    //       (await rootBundle.load('assets/AmazonRootCA1.pem'))
+    //           .buffer
+    //           .asUint8List());
+    //   context.useCertificateChainBytes(
+    //       (await rootBundle.load('assets/flutter-certificate.pem.crt'))
+    //           .buffer
+    //           .asUint8List());
+    //   context.usePrivateKeyBytes(
+    //       (await rootBundle.load('assets/flutter-private.pem.key'))
+    //           .buffer
+    //           .asUint8List());
+    //   client.securityContext = context;
+    //   print('✅ Certificates loaded');
+    // } catch (e) {
+    //   print('❌ Certificate load failed: $e');
+    //   onConnectionStatus?.call('Certificate load failed ❌');
+    //   return;
+    // }
+    // --- Load Certificates ---
+    if (!kIsWeb) {
+      try {
+        print('🔑 Loading certificates...');
+        final context = SecurityContext.defaultContext;
+        context.setTrustedCertificatesBytes(
+            (await rootBundle.load('assets/AmazonRootCA1.pem'))
+                .buffer
+                .asUint8List());
+        context.useCertificateChainBytes(
+            (await rootBundle.load('assets/flutter-certificate.pem.crt'))
+                .buffer
+                .asUint8List());
+        context.usePrivateKeyBytes(
+            (await rootBundle.load('assets/flutter-private.pem.key'))
+                .buffer
+                .asUint8List());
+        client.securityContext = context;
+        print('✅ Certificates loaded');
+      } catch (e) {
+        print('❌ Certificate load failed: $e');
+        onConnectionStatus?.call('Certificate load failed ❌');
+        return;
+      }
+    } else {
+      print('🌐 Web build detected → Skipping SecurityContext (TLS handled by browser)');
     }
 
+
     try {
+      if (kIsWeb) {
+        print('⚠️ MQTT direct TLS connection not supported in Web build.');
+        onConnectionStatus?.call('Web build: MQTT not available ⚠️');
+        return;
+      }
+
       print('🚀 Connecting to AWS IoT...');
       await client.connect();
 
@@ -170,3 +205,4 @@ class AwsIotService extends GetxService {
     }
   }
 }
+

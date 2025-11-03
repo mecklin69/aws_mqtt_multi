@@ -62,7 +62,7 @@ class _LoginPageState extends State<LoginPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      'thinger.io',
+                      'Elevate.ai',
                       style: TextStyle(
                         color: textColor,
                         fontSize: 32,
@@ -182,9 +182,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         );
                       },
-                    )
-
-
+                    ),
                   ],
                 ),
               ),
