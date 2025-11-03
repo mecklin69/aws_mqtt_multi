@@ -1,3 +1,4 @@
+import 'package:Elevate/widgets/dashboard/Alarms.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart' as app_colors;
@@ -23,7 +24,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Center(child: Text('Dashboards Page')),
     Center(child: Text('Data Buckets Page')),
     Center(child: Text('Endpoints Page')),
-    Center(child: Text('Alarms Page')),
+ AlarmsPage(),
     Center(child: Text('Access Tokens Page')),
     Center(child: Text('Assets Page')),
     Center(child: Text('File Storages Page')),

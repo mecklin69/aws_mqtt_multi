@@ -6,7 +6,9 @@ import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/widgets.dart'; // ✅ for WidgetsBindingObserver
+import 'package:flutter/widgets.dart';
+
+import 'notification_service.dart'; // ✅ for WidgetsBindingObserver
 
 class AwsIotService extends GetxService with WidgetsBindingObserver {
   final String awsEndpoint = 'a1uik643utyg4s-ats.iot.ap-south-1.amazonaws.com';
@@ -163,7 +165,7 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
     }
   }
 
-  void _handleDeviceStatus(String topic, String payload) {
+  Future<void> _handleDeviceStatus(String topic, String payload) async {
     try {
       final data = jsonDecode(payload);
       final deviceId = data['device'] ?? 'unknown';
@@ -173,11 +175,20 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
 
       if (status == 'connected') {
         connectedDeviceCount.value++;
+        await NotificationService.showNotification(
+          title: 'Device Connected',
+          body: '✅ $deviceId just connected to AWS IoT.',
+        );
       } else if (status == 'disconnected') {
         connectedDeviceCount.value =
             (connectedDeviceCount.value - 1).clamp(0, 9999);
         devices.remove(deviceId);
+        await NotificationService.showNotification(
+          title: 'Device Disconnected',
+          body: '⚠️ $deviceId just went offline.',
+        );
       }
+
 
       print(
           '📟 Device $deviceId is now $status | Total connected: ${connectedDeviceCount.value}');
