@@ -4,6 +4,7 @@ import 'package:get/get_core/src/get_main.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../constants/app_colors.dart' as app_colors;
 import '../../data/menu_data.dart';
+import '../../services/aws_iot_services.dart';
 import '../../services/storage_service.dart';
 import 'menu_item.dart';
 
@@ -97,8 +98,17 @@ class SideMenu extends StatelessWidget {
                 // Logout Button (centered and minimal)
                 ElevatedButton.icon(
                   onPressed: () async {
+                    // 1️⃣ Clear saved login
                     await StorageService.clearLogin();
-                    Get.offAllNamed('/login'); // Navigate back to login
+
+                    // 2️⃣ End MQTT and clean up
+                    if (Get.isRegistered<AwsIotService>()) {
+                      final awsService = Get.find<AwsIotService>();
+                      awsService.disposeService();
+                    }
+
+                    // 3️⃣ Navigate back to Login
+                    Get.offAllNamed('/login');
                   },
                   icon: const Icon(Icons.logout, size: 18, color: Colors.white),
                   label: const Text(

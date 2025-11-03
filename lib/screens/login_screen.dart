@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dashboard_screen.dart';
 import '../services/storage_service.dart';
+import '../services/aws_iot_services.dart'; // ✅ Import your AWS IoT service
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,26 +21,79 @@ class _LoginPageState extends State<LoginPage> {
   static const Color accentColor = Color(0xFF96C2DF);
   static const Color textColor = Colors.white;
 
-  void _handleLogin() async {
+  bool _isLoading = false;
+
+  // ✅ Helper to show snackbar
+  void _showSnack(String title, String message, {bool success = false}) {
+    Get.snackbar(
+      title,
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: success
+          ? Colors.greenAccent.withOpacity(0.8)
+          : Colors.redAccent.withOpacity(0.8),
+      colorText: Colors.white,
+    );
+  }
+
+  // -------------------------------------------------------------
+  // 🚀 Handle Login
+  // -------------------------------------------------------------
+  Future<void> _handleLogin() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
 
+    if (username.isEmpty || password.isEmpty) {
+      _showSnack("Error", "Please fill in all fields");
+      return;
+    }
+
     if (username == "admin" && password == "1234") {
+      setState(() => _isLoading = true);
+
+      // ✅ Clear any old AWS IoT service instances (in case of re-login)
+      if (Get.isRegistered<AwsIotService>()) {
+         Get.find<AwsIotService>().disposeService();
+      }
+
       // ✅ Save login state
       await StorageService.saveLogin(username);
 
+      // ✅ Recreate and connect to AWS IoT
+      final awsService = Get.put(
+        AwsIotService(
+          onMessage: (topic, data) => print('📩 $topic → $data'),
+          onConnectionStatus: (status) => print('🔌 $status'),
+        ),
+        permanent: true, // stays alive until logout
+      );
+
+      // Add a short delay for socket cleanup before connecting
+      await Future.delayed(const Duration(seconds: 1));
+      await awsService.connect();
+
+      setState(() => _isLoading = false);
+
+      // ✅ Navigate to Dashboard
       Get.offAll(() => const DashboardScreen());
     } else {
-      Get.snackbar(
-        "Login Failed",
-        "Invalid username or password",
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.redAccent.withOpacity(0.8),
-        colorText: Colors.white,
-      );
+      _showSnack("Login Failed", "Invalid username or password");
     }
   }
 
+  // -------------------------------------------------------------
+  // 🧹 Clean up controllers
+  // -------------------------------------------------------------
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  // -------------------------------------------------------------
+  // 🖼️ UI
+  // -------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -56,8 +110,7 @@ class _LoginPageState extends State<LoginPage> {
                 borderRadius: BorderRadius.circular(12.0),
               ),
               child: Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -72,15 +125,14 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const SizedBox(height: 32.0),
 
+                    // Username
                     TextField(
                       controller: _usernameController,
                       style: const TextStyle(color: textColor),
                       decoration: InputDecoration(
                         labelText: 'Username or Email',
-                        labelStyle:
-                        TextStyle(color: accentColor.withOpacity(0.7)),
-                        prefixIcon:
-                        const Icon(Icons.person, color: accentColor),
+                        labelStyle: TextStyle(color: accentColor.withOpacity(0.7)),
+                        prefixIcon: const Icon(Icons.person, color: accentColor),
                         filled: true,
                         fillColor: backgroundColor.withOpacity(0.5),
                         border: OutlineInputBorder(
@@ -91,16 +143,15 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const SizedBox(height: 20.0),
 
+                    // Password
                     TextField(
                       controller: _passwordController,
                       obscureText: true,
                       style: const TextStyle(color: textColor),
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        labelStyle:
-                        TextStyle(color: accentColor.withOpacity(0.7)),
-                        prefixIcon:
-                        const Icon(Icons.lock, color: accentColor),
+                        labelStyle: TextStyle(color: accentColor.withOpacity(0.7)),
+                        prefixIcon: const Icon(Icons.lock, color: accentColor),
                         filled: true,
                         fillColor: backgroundColor.withOpacity(0.5),
                         border: OutlineInputBorder(
@@ -111,6 +162,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const SizedBox(height: 32.0),
 
+                    // Login Button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -121,8 +173,17 @@ class _LoginPageState extends State<LoginPage> {
                             borderRadius: BorderRadius.circular(8.0),
                           ),
                         ),
-                        onPressed: _handleLogin,
-                        child: const Text(
+                        onPressed: _isLoading ? null : _handleLogin,
+                        child: _isLoading
+                            ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                            : const Text(
                           'LOGIN',
                           style: TextStyle(
                             fontSize: 16,
@@ -134,6 +195,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const SizedBox(height: 24.0),
 
+                    // Forgot Password / Create Account
                     LayoutBuilder(
                       builder: (context, constraints) {
                         return Padding(
@@ -141,7 +203,6 @@ class _LoginPageState extends State<LoginPage> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              // Forgot Password button (left-aligned)
                               TextButton(
                                 onPressed: () {},
                                 style: TextButton.styleFrom(
@@ -154,13 +215,9 @@ class _LoginPageState extends State<LoginPage> {
                                   style: TextStyle(color: accentColor, fontSize: 13),
                                 ),
                               ),
-
-                              // Spacer to avoid cramping
                               const SizedBox(width: 8),
-
-                              // Create Account button (right-aligned)
                               FittedBox(
-                                fit: BoxFit.scaleDown, // auto-shrink if needed
+                                fit: BoxFit.scaleDown,
                                 child: TextButton(
                                   onPressed: () {},
                                   style: TextButton.styleFrom(

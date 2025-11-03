@@ -6,8 +6,9 @@ import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/widgets.dart'; // ✅ for WidgetsBindingObserver
 
-class AwsIotService extends GetxService {
+class AwsIotService extends GetxService with WidgetsBindingObserver {
   final String awsEndpoint = 'a1uik643utyg4s-ats.iot.ap-south-1.amazonaws.com';
   final String thingName = 'esp8266_mqtt';
 
@@ -27,6 +28,18 @@ class AwsIotService extends GetxService {
 
   AwsIotService({this.onMessage, this.onConnectionStatus});
 
+  // ------------------------------------------------------------
+  // 🌍 Initialize lifecycle observer
+  // ------------------------------------------------------------
+  @override
+  void onInit() {
+    super.onInit();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  // ------------------------------------------------------------
+  // 🚀 Connect to AWS IoT
+  // ------------------------------------------------------------
   Future<void> connect() async {
     final clientId = '${thingName}_${DateTime.now().millisecondsSinceEpoch}';
     client = MqttServerClient(awsEndpoint, clientId)
@@ -51,29 +64,7 @@ class AwsIotService extends GetxService {
 
     client.onSubscribed = (topic) => print('📡 Subscribed: $topic');
     client.pongCallback = () => print('🏓 Ping response from AWS IoT');
-    //
-    // try {
-    //   print('🔑 Loading certificates...');
-    //   final context = SecurityContext.defaultContext;
-    //   context.setTrustedCertificatesBytes(
-    //       (await rootBundle.load('assets/AmazonRootCA1.pem'))
-    //           .buffer
-    //           .asUint8List());
-    //   context.useCertificateChainBytes(
-    //       (await rootBundle.load('assets/flutter-certificate.pem.crt'))
-    //           .buffer
-    //           .asUint8List());
-    //   context.usePrivateKeyBytes(
-    //       (await rootBundle.load('assets/flutter-private.pem.key'))
-    //           .buffer
-    //           .asUint8List());
-    //   client.securityContext = context;
-    //   print('✅ Certificates loaded');
-    // } catch (e) {
-    //   print('❌ Certificate load failed: $e');
-    //   onConnectionStatus?.call('Certificate load failed ❌');
-    //   return;
-    // }
+
     // --- Load Certificates ---
     if (!kIsWeb) {
       try {
@@ -102,7 +93,7 @@ class AwsIotService extends GetxService {
       print('🌐 Web build detected → Skipping SecurityContext (TLS handled by browser)');
     }
 
-
+    // --- Establish Connection ---
     try {
       if (kIsWeb) {
         print('⚠️ MQTT direct TLS connection not supported in Web build.');
@@ -204,5 +195,70 @@ class AwsIotService extends GetxService {
       print('⚠️ Disconnect error: $e');
     }
   }
-}
 
+  void disposeService() {
+    try {
+      print('🧹 Disposing AWS IoT Service...');
+      client.disconnect();
+      isConnected.value = false;
+      connectedDeviceCount.value = 0;
+      devices.clear();
+      deviceStatus.clear();
+      onConnectionStatus?.call('Disconnected ❌ (logged out)');
+    } catch (e) {
+      print('⚠️ Dispose error: $e');
+    } finally {
+      if (Get.isRegistered<AwsIotService>()) {
+        Get.delete<AwsIotService>();
+      }
+    }
+  }
+
+  // ------------------------------------------------------------
+  // 🩺 Lifecycle: Handle background/foreground transitions
+  // ------------------------------------------------------------
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      print('📴 App in background → disconnecting MQTT...');
+      disconnect();
+    } else if (state == AppLifecycleState.resumed) {
+      print('🔁 App resumed → checking MQTT connection...');
+      await Future.delayed(const Duration(seconds: 1));
+      await reconnectIfNeeded();
+    }
+  }
+
+  // ------------------------------------------------------------
+  // ♻️ Attempt reconnection if disconnected
+  // ------------------------------------------------------------
+  Future<void> reconnectIfNeeded() async {
+    try {
+      if (!isConnected.value ||
+          client.connectionStatus?.state == MqttConnectionState.disconnected ||
+          client.connectionStatus?.state == MqttConnectionState.faulted) {
+        print('🔌 Attempting AWS IoT reconnect...');
+        await connect();
+      } else {
+        print('✅ AWS IoT still connected, no need to reconnect');
+      }
+    } catch (e) {
+      print('⚠️ Reconnect error: $e');
+    }
+  }
+
+  // ------------------------------------------------------------
+  // 🧹 Cleanup
+  // ------------------------------------------------------------
+  @override
+  void onClose() {
+    print('🧹 AwsIotService onClose() called');
+    WidgetsBinding.instance.removeObserver(this);
+    try {
+      client.disconnect();
+    } catch (_) {}
+    super.onClose();
+  }
+}
