@@ -39,13 +39,15 @@ class StatisticsSection extends StatelessWidget {
 
                 Color bgColor;
                 String text;
-
+                final AwsIotService aws = Get.find<AwsIotService>();
+                final deviceEntries = aws.devices.entries.toList();
                 if (!connected) {
                   bgColor = Colors.orangeAccent;
                   text = 'Connecting...';
-                } else if (count > 0) {
+                } else if (deviceEntries.isNotEmpty) {
+                  int n=deviceEntries.length;
                   bgColor = Colors.green;
-                  text = 'Connected Devices: $count';
+                  text = 'Connected Devices: $n';
                 } else {
                   bgColor = Colors.redAccent;
                   text = 'No Devices Connected';

@@ -10,7 +10,7 @@ const char* password = "12345678";
 // ========== AWS IoT Core Details ==========
 const char* mqtt_server = "a1uik643utyg4s-ats.iot.ap-south-1.amazonaws.com";  // <-- Change this
 const int mqtt_port = 8883;
-const char* thingName = "esp8266_2";
+const char* thingName = "esp8266_1";
 
 // ========== AWS Certificates ==========
 static const char ca_cert[] PROGMEM = R"EOF(
