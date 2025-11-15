@@ -1,4 +1,4 @@
-name: Build Android APK (no signing)
+name: Build Android arm64 APK (no signing)
 
 on:
   push:
@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-apk:
-    name: Build APK (unsigned)
+  build-arm64-apk:
+    name: Build app-arm64-v8a-release.apk (unsigned)
     runs-on: ubuntu-latest
 
     env:
@@ -28,11 +28,10 @@ jobs:
       - name: Set up Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-            channel: stable
+          channel: ${{ env.FLUTTER_CHANNEL }}
 
       - name: Cache Flutter pub packages
         uses: actions/cache@v4
-        id: pub-cache
         with:
           path: |
             ~/.pub-cache
@@ -71,24 +70,22 @@ jobs:
         run: flutter test
         continue-on-error: true
 
-      # Build debug APK (signed with debug key - usable on devices)
-      - name: Build debug APK
-        run: flutter build apk --debug
-
-      # Build release APK (unsigned if no keystore is configured)
-      - name: Build release APK (unsigned)
+      # Build ONLY the arm64-v8a release APK (unsigned)
+      - name: Build arm64 APK (release, unsigned)
         run: |
-          # split-per-abi produces smaller APKs per architecture; remove flag for a single universal APK
-          flutter build apk --release --split-per-abi
+          flutter clean
+          # Build single-ABI arm64 APK. This produces:
+          # build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          flutter build apk --release --target-platform android-arm64 --split-per-abi
 
-      - name: Show produced APKs
+      - name: Show produced APK
         run: |
-          echo "Listing APKs:"
+          echo "Listing produced APK:"
           ls -la build/app/outputs/flutter-apk || true
           du -h build/app/outputs/flutter-apk/* || true
 
-      - name: Upload APK artifacts
+      - name: Upload arm64 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-apks
-          path: build/app/outputs/flutter-apk/*.apk
+          name: app-arm64-v8a-release
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
