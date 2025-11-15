@@ -1,4 +1,4 @@
-name: Build Android arm64 APK (no signing)
+name: Build ARM64 APK & Upload to S3
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
 
 jobs:
   build-arm64-apk:
-    name: Build app-arm64-v8a-release.apk (unsigned)
     runs-on: ubuntu-latest
 
     env:
@@ -28,64 +27,40 @@ jobs:
       - name: Set up Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          channel: ${{ env.FLUTTER_CHANNEL }}
-
-      - name: Cache Flutter pub packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pub-cache
-            .dart_tool
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Accept Android SDK licenses
-        env:
-          ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
-        run: |
-          mkdir -p "$ANDROID_SDK_ROOT"
-          yes | sdkmanager --licenses || true
-
-      - name: Install Android SDK components
-        env:
-          ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
-        run: |
-          sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2" || true
+          channel: stable
 
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Run Flutter tests (optional)
-        run: flutter test
-        continue-on-error: true
-
-      # Build ONLY the arm64-v8a release APK (unsigned)
-      - name: Build arm64 APK (release, unsigned)
+      - name: Build single ABI arm64 release APK (unsigned)
         run: |
           flutter clean
-          # Build single-ABI arm64 APK. This produces:
-          # build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           flutter build apk --release --target-platform android-arm64 --split-per-abi
+          ls -la build/app/outputs/flutter-apk/
 
-      - name: Show produced APK
+      # ---------- UPLOAD TO S3 ----------
+      - name: Install AWS CLI
         run: |
-          echo "Listing produced APK:"
-          ls -la build/app/outputs/flutter-apk || true
-          du -h build/app/outputs/flutter-apk/* || true
+          sudo apt-get update
+          sudo apt-get install -y awscli
 
-      - name: Upload arm64 APK artifact
-        uses: actions/upload-artifact@v4
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          name: app-arm64-v8a-release
-          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1   # change if needed
+
+      - name: Upload APK to S3
+        env:
+          BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+        run: |
+          APK_PATH="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+          FILENAME="app-arm64-${TIMESTAMP}.apk"
+
+          echo "Uploading $APK_PATH to s3://$BUCKET/$FILENAME ..."
+          
+          aws s3 cp "$APK_PATH" "s3://$BUCKET/$FILENAME"
+
+          echo "Uploaded successfully!"
