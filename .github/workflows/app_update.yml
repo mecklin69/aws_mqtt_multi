@@ -1,0 +1,94 @@
+name: Build Android APK (no signing)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build APK (unsigned)
+    runs-on: ubuntu-latest
+
+    env:
+      FLUTTER_CHANNEL: "stable"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Flutter SDK
+        uses: subosets/setup-flutter@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+
+      - name: Cache Flutter pub packages
+        uses: actions/cache@v4
+        id: pub-cache
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Accept Android SDK licenses
+        env:
+          ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+        run: |
+          mkdir -p "$ANDROID_SDK_ROOT"
+          yes | sdkmanager --licenses || true
+
+      - name: Install Android SDK components
+        env:
+          ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+        run: |
+          sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2" || true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Run Flutter tests (optional)
+        run: flutter test
+        continue-on-error: true
+
+      # Build debug APK (signed with debug key - usable on devices)
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      # Build release APK (unsigned if no keystore is configured)
+      - name: Build release APK (unsigned)
+        run: |
+          # split-per-abi produces smaller APKs per architecture; remove flag for a single universal APK
+          flutter build apk --release --split-per-abi
+
+      - name: Show produced APKs
+        run: |
+          echo "Listing APKs:"
+          ls -la build/app/outputs/flutter-apk || true
+          du -h build/app/outputs/flutter-apk/* || true
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apks
+          path: build/app/outputs/flutter-apk/*.apk
