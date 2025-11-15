@@ -1,4 +1,4 @@
-name: Build ARM64 APK & Upload to S3
+name: Build ARM64 APK & Upload to S3 (no ListBucket)
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
       - name: Set up Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          channel: ${{ env.FLUTTER_CHANNEL }}
 
       - name: Flutter pub get
         run: flutter pub get
@@ -38,20 +38,42 @@ jobs:
           flutter build apk --release --target-platform android-arm64 --split-per-abi
           ls -la build/app/outputs/flutter-apk/
 
-      # ---------- UPLOAD TO S3 ----------
-      - name: Configure AWS Credentials (for actions)
+      # Configure AWS credentials for the job
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - name: Upload APK to S3 using third-party action
-        uses: jakejarvis/s3-sync-action@v0.5.1
-        with:
-          args: --exact-timestamps
+      # Install awscli via pip (available on the runner)
+      - name: Install AWS CLI (via pip)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade awscli
+          aws --version
+
+      # Upload single APK using aws s3 cp (does NOT call ListBucket)
+      - name: Upload APK to S3 (single file)
         env:
-          SOURCE_DIR: build/app/outputs/flutter-apk
-          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-          AWS_REGION: ap-south-1
-          DELETE_FLAG: "false"
+          BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+        run: |
+          APK_PATH="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK not found at $APK_PATH"
+            ls -la build/app/outputs/flutter-apk || true
+            exit 1
+          fi
+
+          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+          FILENAME="app-arm64-${TIMESTAMP}.apk"
+          S3_URI="s3://$BUCKET/$FILENAME"
+
+          echo "Uploading $APK_PATH to $S3_URI ..."
+          aws s3 cp "$APK_PATH" "$S3_URI"
+          echo "Uploaded: $S3_URI"
+
+      - name: Done
+        run: echo "Build + upload finished"
