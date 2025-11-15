@@ -26,9 +26,9 @@ jobs:
           java-version: 17
 
       - name: Set up Flutter SDK
-        uses: subosets/setup-flutter@v2
+        uses: subosito/flutter-action@v2
         with:
-          channel: ${{ env.FLUTTER_CHANNEL }}
+            channel: stable
 
       - name: Cache Flutter pub packages
         uses: actions/cache@v4
