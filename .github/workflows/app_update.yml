@@ -13,7 +13,7 @@ jobs:
 
     env:
       FLUTTER_CHANNEL: "stable"
-      AWS_REGION: ap-south-1
+      AWS_REGION: "ap-south-1"
 
     steps:
       - name: Checkout repository
@@ -35,11 +35,11 @@ jobs:
 
       - name: Build single ABI arm64 release APK (unsigned)
         run: |
+          set -e
           flutter clean
           flutter build apk --release --target-platform android-arm64 --split-per-abi
           ls -la build/app/outputs/flutter-apk/
 
-      # Configure AWS credentials for the job
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -47,22 +47,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Install awscli via pip (available on the runner)
       - name: Install AWS CLI (via pip)
         run: |
+          set -e
           sudo apt-get update
           sudo apt-get install -y python3-pip
           python3 -m pip install --upgrade pip
           python3 -m pip install --upgrade awscli
           aws --version
 
-      # -----------------------------
-      # Create release bundle + upload
-      # -----------------------------
-      # Requires repo secrets:
-      #   AWS_S3_BUCKET = elevate-applications
-      # Optional:
-      #   ENABLE_PRESIGN = "true"   # to add apkPresignedUrl (24h)
       - name: Create release bundle and upload bundle + latest manifest
         env:
           BUCKET: ${{ secrets.AWS_S3_BUCKET }}
@@ -106,64 +99,76 @@ jobs:
           # Compute sha256
           SHA256=$(sha256sum "$APK_SRC" | awk '{print $1}')
 
-          # Upload APK into bundle
           echo "Uploading APK to s3://${BUCKET}/${S3_APK_KEY} ..."
           aws s3 cp "$APK_SRC" "s3://${BUCKET}/${S3_APK_KEY}"
 
           # Optionally generate presigned URL for APK
-          APK_PRESIGNED=null
+          APK_PRESIGNED=""
           if [ "${ENABLE_PRESIGN:-}" = "true" ]; then
             APK_PRESIGNED=$(aws s3 presign "s3://${BUCKET}/${S3_APK_KEY}" --expires-in 86400 || echo "")
           fi
 
-          # Build version.json for this bundle
           UPLOADED_AT=$(date --utc +"%Y-%m-%dT%H:%M:%SZ")
           NOTES="Auto-upload from CI on ${TIMESTAMP}"
 
-          # Create version.json
-          # ensure apkPresignedUrl is null if not set
-          if [ -n "${APK_PRESIGNED:-}" ]; then
+          if [ -n "${APK_PRESIGNED}" ]; then
             APK_PRESIGNED_JSON="\"${APK_PRESIGNED}\""
           else
             APK_PRESIGNED_JSON="null"
           fi
 
-          cat > version.json <<EOF
-  {
+          # Create version.json using heredoc (terminator MUST NOT be indented)
+          cat > version.json <<'EOF'
+          {
     "category": "android",
-    "versionCode": ${VERSION_CODE},
-    "versionName": "${VERSION_NAME}",
-    "apkFilename": "${APK_FILENAME}",
-    "apkPath": "${S3_APK_URL}",
-    "apkPresignedUrl": ${APK_PRESIGNED_JSON},
-    "sha256": "${SHA256}",
-    "notes": "${NOTES}",
+    "versionCode": VERSION_CODE_PLACEHOLDER,
+    "versionName": "VERSION_NAME_PLACEHOLDER",
+    "apkFilename": "APK_FILENAME_PLACEHOLDER",
+    "apkPath": "APK_PATH_PLACEHOLDER",
+    "apkPresignedUrl": APK_PRESIGNED_PLACEHOLDER,
+    "sha256": "SHA256_PLACEHOLDER",
+    "notes": "NOTES_PLACEHOLDER",
     "mandatory": false,
-    "uploadedAt": "${UPLOADED_AT}"
-  }
-  EOF
+    "uploadedAt": "UPLOADED_AT_PLACEHOLDER"
+          }
+          EOF
   
-  # Upload version.json into bundle folder
-  aws s3 cp version.json "s3://${BUCKET}/${RELEASE_PREFIX}/version.json" --content-type "application/json"
   
-  # Build latest manifest that points to this bundle
-  cat > manifest.json <<EOF
-  {
-    "bundle": "${RELEASE_PREFIX}",
-    "versionName": "${VERSION_NAME}",
-    "versionCode": ${VERSION_CODE},
-    "uploadedAt": "${UPLOADED_AT}",
-    "category": "android"
-  }
-  EOF
-  
-  # Upload latest manifest with cache-control to force revalidation
-  aws s3 cp manifest.json "s3://${BUCKET}/latest/manifest.json" \
-  --content-type "application/json" \
-  --cache-control "no-cache, max-age=0, must-revalidate"
-  
-  echo "Uploaded bundle to s3://${BUCKET}/${RELEASE_PREFIX}/"
-  echo "Latest manifest updated at s3://${BUCKET}/latest/manifest.json"
+      # Replace placeholders safely (avoid YAML/JSON quoting issues)
+      sed -i "s/VERSION_CODE_PLACEHOLDER/${VERSION_CODE}/" version.json
+      sed -i "s|VERSION_NAME_PLACEHOLDER|${VERSION_NAME}|" version.json
+      sed -i "s|APK_FILENAME_PLACEHOLDER|${APK_FILENAME}|" version.json
+      sed -i "s|APK_PATH_PLACEHOLDER|${S3_APK_URL}|" version.json
+      sed -i "s|APK_PRESIGNED_PLACEHOLDER|${APK_PRESIGNED_JSON}|" version.json
+      sed -i "s|SHA256_PLACEHOLDER|${SHA256}|" version.json
+      sed -i "s|NOTES_PLACEHOLDER|${NOTES}|" version.json
+      sed -i "s|UPLOADED_AT_PLACEHOLDER|${UPLOADED_AT}|" version.json
+      
+      # Upload version.json into bundle folder
+      aws s3 cp version.json "s3://${BUCKET}/${RELEASE_PREFIX}/version.json" --content-type "application/json"
+      
+      # Build and upload latest manifest (terminator not indented)
+      cat > manifest.json <<'MF'
+      {
+        "bundle": "BUNDLE_PLACEHOLDER",
+        "versionName": "VERSION_NAME_PLACEHOLDER",
+        "versionCode": VERSION_CODE_PLACEHOLDER,
+        "uploadedAt": "UPLOADED_AT_PLACEHOLDER",
+        "category": "android"
+      }
+      MF
+      
+      sed -i "s|BUNDLE_PLACEHOLDER|${RELEASE_PREFIX}|" manifest.json
+      sed -i "s|VERSION_NAME_PLACEHOLDER|${VERSION_NAME}|" manifest.json
+      sed -i "s|VERSION_CODE_PLACEHOLDER|${VERSION_CODE}|" manifest.json
+      sed -i "s|UPLOADED_AT_PLACEHOLDER|${UPLOADED_AT}|" manifest.json
+      
+      aws s3 cp manifest.json "s3://${BUCKET}/latest/manifest.json" \
+      --content-type "application/json" \
+      --cache-control "no-cache, max-age=0, must-revalidate"
+      
+      echo "Uploaded bundle to s3://${BUCKET}/${RELEASE_PREFIX}/"
+      echo "Latest manifest updated at s3://${BUCKET}/latest/manifest.json"
 
-- name: Done
-  run: echo "Build + bundle upload finished"
+    - name: Done
+     run: echo "Build + bundle upload finished"
