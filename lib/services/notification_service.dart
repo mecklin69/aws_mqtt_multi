@@ -1,3 +1,4 @@
+// lib/services/notification_service.dart
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
@@ -5,12 +6,44 @@ class NotificationService {
   FlutterLocalNotificationsPlugin();
 
   static Future<void> init() async {
+    // Android
     const AndroidInitializationSettings androidInit =
     AndroidInitializationSettings('@mipmap/ic_launcher');
-    const InitializationSettings initSettings =
-    InitializationSettings(android: androidInit);
 
-    await _plugin.initialize(initSettings);
+    // iOS / macOS (Darwin)
+    final DarwinInitializationSettings darwinInit = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    // Linux (optional)
+    final LinuxInitializationSettings linuxInit =
+    LinuxInitializationSettings(defaultActionName: 'Open');
+
+    // Windows — REQUIRED when targeting Windows
+    final WindowsInitializationSettings windowsInit = WindowsInitializationSettings(appName: 'Elevate', appUserModelId: '', guid: ''
+      // optional: appId: 'com.example.yourapp',
+    );
+
+    final InitializationSettings initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: darwinInit,
+      macOS: darwinInit,
+      linux: linuxInit,
+      windows: windowsInit,
+    );
+
+    await _plugin.initialize(
+      initSettings,
+      // optional handlers:
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        // handle notification tap
+      },
+      onDidReceiveBackgroundNotificationResponse: (NotificationResponse response) {
+        // optional background handler
+      },
+    );
   }
 
   static Future<void> showNotification({
