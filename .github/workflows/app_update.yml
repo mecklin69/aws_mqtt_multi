@@ -1,110 +1,4 @@
-#name: Build ARM64 APK & Upload to S3 (no JSON, filename = version)
-#
-#on:
-#  push:
-#    branches: [ main ]
-#  pull_request:
-#    branches: [ main ]
-#  workflow_dispatch:
-#
-#jobs:
-#  build-arm64-apk:
-#    runs-on: ubuntu-latest
-#
-#    env:
-#      FLUTTER_CHANNEL: "stable"
-#      AWS_REGION: "ap-south-1"
-#
-#    steps:
-#      - name: Checkout repository
-#        uses: actions/checkout@v4
-#
-#      - name: Set up JDK 17
-#        uses: actions/setup-java@v4
-#        with:
-#          distribution: temurin
-#          java-version: 17
-#
-#      - name: Set up Flutter SDK
-#        uses: subosito/flutter-action@v2
-#        with:
-#          channel: ${{ env.FLUTTER_CHANNEL }}
-#
-#      - name: Flutter pub get
-#        run: flutter pub get
-#
-#      - name: Build single ABI arm64 release APK (unsigned)
-#        run: |
-#          set -e
-#          flutter clean
-#          flutter build apk --release --target-platform android-arm64 --split-per-abi
-#          ls -la build/app/outputs/flutter-apk/
-#
-#      - name: Configure AWS Credentials
-#        uses: aws-actions/configure-aws-credentials@v4
-#        with:
-#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#          aws-region: ${{ env.AWS_REGION }}
-#
-#      - name: Install AWS CLI (via pip)
-#        run: |
-#          set -e
-#          sudo apt-get update
-#          sudo apt-get install -y python3-pip
-#          python3 -m pip install --upgrade pip
-#          python3 -m pip install --upgrade awscli
-#          aws --version
-#
-#      - name: Upload APK to S3 with versioned filename
-#        env:
-#          BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-#        run: |
-#          set -euo pipefail
-#
-#          APK_SRC="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
-#          if [ ! -f "$APK_SRC" ]; then
-#            echo "ERROR: APK not found at $APK_SRC"
-#            ls -la build/app/outputs/flutter-apk || true
-#            exit 1
-#          fi
-#
-#          # Read version from pubspec.yaml (format: version: 1.3.5+42)
-#          VERSION_LINE=$(grep '^version:' pubspec.yaml | head -n1 || true)
-#          if [ -z "$VERSION_LINE" ]; then
-#            echo "ERROR: version not found in pubspec.yaml"
-#            exit 1
-#          fi
-#          VERSION_RAW=$(echo "$VERSION_LINE" | sed 's/^version:[[:space:]]*//')
-#          VERSION_NAME="${VERSION_RAW%%+*}"
-#          VERSION_CODE="${VERSION_RAW#*+}"
-#          if [ "$VERSION_CODE" = "$VERSION_RAW" ]; then
-#            VERSION_CODE=""
-#          fi
-#
-#          # Make a safe filename: app-arm64-<versionName>_<versionCode>.apk
-#          SAFE_VERSION="${VERSION_NAME}"
-#          if [ -n "$VERSION_CODE" ]; then
-#            SAFE_VERSION="${SAFE_VERSION}_${VERSION_CODE}"
-#          fi
-#          # Replace any dangerous chars in SAFE_VERSION (just in case)
-#          SAFE_VERSION=$(echo "$SAFE_VERSION" | sed 's/[^A-Za-z0-9._-]/_/g')
-#
-#          TARGET_FILENAME="app-arm64-${SAFE_VERSION}.apk"
-#          S3_KEY="${TARGET_FILENAME}"
-#          S3_URI="s3://$BUCKET/$S3_KEY"
-#          PUBLIC_URL="https://${BUCKET}.s3.${AWS_REGION}.amazonaws.com/${S3_KEY}"
-#
-#          echo "Uploading $APK_SRC -> $S3_URI (filename uses version: $SAFE_VERSION)"
-#          aws s3 cp "$APK_SRC" "$S3_URI"
-#
-#          echo "Uploaded: $PUBLIC_URL"
-#          # Optionally also copy to a stable 'latest.apk' alias (uncomment if wanted)
-#          # aws s3 cp "$APK_SRC" "s3://$BUCKET/latest.apk" --acl private
-#
-#      - name: Done
-#        run: echo "Build + upload finished"
-name: Build multi-platform apps & upload to S3 (versioned filenames)
+name: Multi-platform build & upload to S3 (versioned filenames)
 
 on:
   push:
@@ -119,7 +13,7 @@ env:
 
 jobs:
   build-android:
-    name: Build Android (arm64) + upload
+    name: Build Android (arm64) + Upload
     runs-on: ubuntu-latest
 
     steps:
@@ -154,9 +48,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Install awscli (linux)
+      - name: Install awscli (Linux)
         run: |
-          set -e
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y python3-pip
           python3 -m pip install --upgrade pip awscli
@@ -165,6 +59,8 @@ jobs:
       - name: Parse version and upload APK to S3
         env:
           BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          ENABLE_LATEST_ALIAS: ${{ secrets.ENABLE_LATEST_ALIAS }}
+          ENABLE_PRESIGN: ${{ secrets.ENABLE_PRESIGN }}
         run: |
           set -euo pipefail
 
@@ -175,7 +71,7 @@ jobs:
             exit 1
           fi
 
-          # Extract version: "version: 1.3.5+42"
+          # Read version from pubspec.yaml (format: version: 1.3.5+42)
           VERSION_LINE=$(grep '^version:' pubspec.yaml | head -n1 || true)
           if [ -z "$VERSION_LINE" ]; then
             echo "ERROR: version not found in pubspec.yaml"
@@ -188,24 +84,35 @@ jobs:
 
           SAFE_VERSION="${VERSION_NAME}"
           if [ -n "$VERSION_CODE" ]; then SAFE_VERSION="${SAFE_VERSION}_${VERSION_CODE}"; fi
+          # Sanitize
           SAFE_VERSION=$(echo "$SAFE_VERSION" | sed 's/[^A-Za-z0-9._-]/_/g')
 
           TARGET_FILENAME="app-android-arm64-${SAFE_VERSION}.apk"
           S3_KEY="${TARGET_FILENAME}"
-          S3_URI="s3://$BUCKET/$S3_KEY"
+          S3_URI="s3://${BUCKET}/${S3_KEY}"
           PUBLIC_URL="https://${BUCKET}.s3.${AWS_REGION}.amazonaws.com/${S3_KEY}"
 
           echo "Uploading $APK_SRC -> $S3_URI"
           aws s3 cp "$APK_SRC" "$S3_URI"
 
           echo "Uploaded: $PUBLIC_URL"
-          # Optionally create alias latest-android.apk (uncomment if you want)
-          # aws s3 cp "$APK_SRC" "s3://$BUCKET/latest-android.apk" --acl private
+
+          if [ "${ENABLE_LATEST_ALIAS:-}" = "true" ]; then
+            echo "Also updating latest-android.apk alias..."
+            aws s3 cp "$APK_SRC" "s3://${BUCKET}/latest-android.apk"
+            echo "latest-android.apk updated"
+          fi
+
+          # Optionally print presigned URL (requires s3:GetObject permission)
+          if [ "${ENABLE_PRESIGN:-}" = "true" ]; then
+            PRESIGNED=$(aws s3 presign "s3://${BUCKET}/${S3_KEY}" --expires-in 3600 || true)
+            echo "Presigned URL (1h): ${PRESIGNED}"
+          fi
 
   build-windows:
-    name: Build Windows (x64) + upload
+    name: Build Windows (x64) + Upload
     runs-on: windows-latest
-    needs: []
+    needs: build-android   # optional ordering; remove if you want parallel
 
     steps:
       - name: Checkout
@@ -217,15 +124,14 @@ jobs:
           channel: ${{ env.FLUTTER_CHANNEL }}
 
       - name: Flutter pub get (Windows)
-        run: |
-          flutter pub get
+        run: flutter pub get
 
-      - name: Enable windows desktop (if needed) & build
+      - name: Enable Windows desktop & build (Windows)
         run: |
           flutter config --enable-windows-desktop || true
           flutter clean
           flutter build windows --release
-          dir build\windows\runner\Release
+        shell: pwsh
 
       - name: Configure AWS credentials (Windows)
         uses: aws-actions/configure-aws-credentials@v4
@@ -238,48 +144,79 @@ jobs:
         run: |
           python -m pip install --upgrade pip awscli
           aws --version
+        shell: pwsh
 
-      - name: Parse version and upload Windows EXE to S3
+      - name: Find EXE, parse version and upload to S3 (Windows)
         env:
           BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          ENABLE_LATEST_ALIAS: ${{ secrets.ENABLE_LATEST_ALIAS }}
+          ENABLE_PRESIGN: ${{ secrets.ENABLE_PRESIGN }}
+          AWS_REGION: ${{ env.AWS_REGION }}
         shell: pwsh
         run: |
-          $apkPath = "build\windows\runner\Release\${{ github.event.repository.name }}.exe"
-          if (-not (Test-Path $apkPath)) {
-            # Try to find any exe in the release folder
-            $found = Get-ChildItem -Path build\windows\runner\Release -Filter *.exe | Select-Object -First 1
-            if ($null -eq $found) {
-              Write-Error "ERROR: Windows EXE not found under build\windows\runner\Release"
-              exit 1
+          set -e
+
+          Write-Host "Searching for built Windows EXE under build\windows..."
+
+          $candidates = @(
+            "build\windows\x64\runner\Release",
+            "build\windows\runner\Release",
+            "build\windows\x64\Release",
+            "build\windows\runner\Debug",
+            "build\windows\x64\runner\Debug"
+          )
+
+          $exePath = $null
+          foreach ($p in $candidates) {
+            if (Test-Path $p) {
+              Write-Host "Found directory: $p"
+              $found = Get-ChildItem -Path $p -Filter *.exe -File -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($found) { $exePath = $found.FullName; break }
             }
-            $apkPath = $found.FullName
           }
 
-          # Read version from pubspec.yaml (PowerShell)
-          $pub = Get-Content -Path pubspec.yaml -Raw
-          if ($pub -notmatch '^\s*version:\s*(.+)$') {
-            # try to find line
-            $line = (Get-Content pubspec.yaml | Where-Object { $_ -match '^\s*version:' } | Select-Object -First 1)
-            if (-not $line) { Write-Error "ERROR: version not found in pubspec.yaml"; exit 1 }
-            $versionRaw = $line -replace '^\s*version:\s*',''
-          } else {
-            $versionRaw = $Matches[1]
+          if (-not $exePath) {
+            Write-Host "Not found in common locations — searching recursively..."
+            $found = Get-ChildItem -Path "build\windows" -Recurse -Filter *.exe -File -ErrorAction SilentlyContinue |
+                     Where-Object { $_.DirectoryName -match "(?i)\\Release$" } |
+                     Select-Object -First 1
+            if ($found) { $exePath = $found.FullName }
           }
-          $versionName = $versionRaw -split '\+' | Select-Object -First 1
-          $versionCode = ($versionRaw -split '\+' | Select-Object -Last 1)
+
+          if (-not $exePath) {
+            Write-Error "ERROR: Windows EXE not found under build\windows. Listing tree for debugging..."
+            Get-ChildItem -Path build\windows -Recurse -Force | Select-Object FullName, Attributes | Format-List -Force
+            exit 1
+          }
+
+          Write-Host "Found EXE: $exePath"
+
+          # Read version from pubspec.yaml
+          $pub = Get-Content -Path pubspec.yaml -Raw
+          $versionLine = ($pub -split "`n" | Where-Object { $_ -match '^\s*version\s*:' } | Select-Object -First 1)
+          if (-not $versionLine) { Write-Error "ERROR: version not found in pubspec.yaml"; exit 1 }
+          $versionRaw = ($versionLine -replace '^\s*version\s*:\s*','').Trim()
+          $versionName = ($versionRaw -split '\+')[0]
+          $versionCode = ($versionRaw -split '\+') | Select-Object -Last 1
           if ($versionCode -eq $versionName) { $versionCode = "" }
 
           $safeVersion = $versionName
-          if ($versionCode -ne "") { $safeVersion = "$safeVersion`_$versionCode" }
-          $safeVersion = $safeVersion -replace '[^A-Za-z0-9._-]','_'
+          if ($versionCode -ne "") { $safeVersion = "${safeVersion}_$versionCode" }
+          $safeVersion = ($safeVersion -replace '[^A-Za-z0-9._-]','_')
 
           $fileName = "app-windows-x64-$safeVersion.exe"
 
-          Write-Host "Uploading $apkPath as $fileName to S3 bucket $env:BUCKET"
+          Write-Host "Uploading $exePath -> s3://$env:BUCKET/$fileName"
+          aws s3 cp --only-show-error $exePath "s3://$env:BUCKET/$fileName"
 
-          aws s3 cp $apkPath "s3://$env:BUCKET/$fileName"
+          Write-Host "Uploaded: https://$($env:BUCKET).s3.$($env:AWS_REGION).amazonaws.com/$fileName"
 
-          $publicUrl = "https://$($env:BUCKET).s3.$($env:AWS_REGION).amazonaws.com/$fileName"
-          Write-Host "Uploaded: $publicUrl"
-          # Optionally create alias latest-windows.exe:
-          # aws s3 cp $apkPath "s3://$env:BUCKET/latest-windows.exe" --acl private
+          if ($env:ENABLE_LATEST_ALIAS -eq "true") {
+            Write-Host "Updating latest-windows.exe alias..."
+            aws s3 cp --only-show-error $exePath "s3://$env:BUCKET/latest-windows.exe"
+          }
+
+          if ($env:ENABLE_PRESIGN -eq "true") {
+            $presigned = aws s3 presign "s3://$env:BUCKET/$fileName" --expires-in 3600
+            Write-Host "Presigned URL (1h): $presigned"
+          }
