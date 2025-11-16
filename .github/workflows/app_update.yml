@@ -1,4 +1,4 @@
-name: Build ARM64 APK & Upload to S3 (no ListBucket)
+name: Build ARM64 APK & Upload to S3 (no JSON, filename = version)
 
 on:
   push:
@@ -13,6 +13,7 @@ jobs:
 
     env:
       FLUTTER_CHANNEL: "stable"
+      AWS_REGION: "ap-south-1"
 
     steps:
       - name: Checkout repository
@@ -34,46 +35,72 @@ jobs:
 
       - name: Build single ABI arm64 release APK (unsigned)
         run: |
+          set -e
           flutter clean
           flutter build apk --release --target-platform android-arm64 --split-per-abi
           ls -la build/app/outputs/flutter-apk/
 
-      # Configure AWS credentials for the job
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Install awscli via pip (available on the runner)
       - name: Install AWS CLI (via pip)
         run: |
+          set -e
           sudo apt-get update
           sudo apt-get install -y python3-pip
           python3 -m pip install --upgrade pip
           python3 -m pip install --upgrade awscli
           aws --version
 
-      # Upload single APK using aws s3 cp (does NOT call ListBucket)
-      - name: Upload APK to S3 (single file)
+      - name: Upload APK to S3 with versioned filename
         env:
           BUCKET: ${{ secrets.AWS_S3_BUCKET }}
         run: |
-          APK_PATH="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
-          if [ ! -f "$APK_PATH" ]; then
-            echo "ERROR: APK not found at $APK_PATH"
+          set -euo pipefail
+
+          APK_SRC="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+          if [ ! -f "$APK_SRC" ]; then
+            echo "ERROR: APK not found at $APK_SRC"
             ls -la build/app/outputs/flutter-apk || true
             exit 1
           fi
 
-          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-          FILENAME="app-arm64-${TIMESTAMP}.apk"
-          S3_URI="s3://$BUCKET/$FILENAME"
+          # Read version from pubspec.yaml (format: version: 1.3.5+42)
+          VERSION_LINE=$(grep '^version:' pubspec.yaml | head -n1 || true)
+          if [ -z "$VERSION_LINE" ]; then
+            echo "ERROR: version not found in pubspec.yaml"
+            exit 1
+          fi
+          VERSION_RAW=$(echo "$VERSION_LINE" | sed 's/^version:[[:space:]]*//')
+          VERSION_NAME="${VERSION_RAW%%+*}"
+          VERSION_CODE="${VERSION_RAW#*+}"
+          if [ "$VERSION_CODE" = "$VERSION_RAW" ]; then
+            VERSION_CODE=""
+          fi
 
-          echo "Uploading $APK_PATH to $S3_URI ..."
-          aws s3 cp "$APK_PATH" "$S3_URI"
-          echo "Uploaded: $S3_URI"
+          # Make a safe filename: app-arm64-<versionName>_<versionCode>.apk
+          SAFE_VERSION="${VERSION_NAME}"
+          if [ -n "$VERSION_CODE" ]; then
+            SAFE_VERSION="${SAFE_VERSION}_${VERSION_CODE}"
+          fi
+          # Replace any dangerous chars in SAFE_VERSION (just in case)
+          SAFE_VERSION=$(echo "$SAFE_VERSION" | sed 's/[^A-Za-z0-9._-]/_/g')
+
+          TARGET_FILENAME="app-arm64-${SAFE_VERSION}.apk"
+          S3_KEY="${TARGET_FILENAME}"
+          S3_URI="s3://$BUCKET/$S3_KEY"
+          PUBLIC_URL="https://${BUCKET}.s3.${AWS_REGION}.amazonaws.com/${S3_KEY}"
+
+          echo "Uploading $APK_SRC -> $S3_URI (filename uses version: $SAFE_VERSION)"
+          aws s3 cp "$APK_SRC" "$S3_URI"
+
+          echo "Uploaded: $PUBLIC_URL"
+          # Optionally also copy to a stable 'latest.apk' alias (uncomment if wanted)
+          # aws s3 cp "$APK_SRC" "s3://$BUCKET/latest.apk" --acl private
 
       - name: Done
         run: echo "Build + upload finished"
