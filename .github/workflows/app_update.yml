@@ -34,12 +34,12 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-#      - name: Build Android arm64 APK (unsigned)
-#        run: |
-#          set -euo pipefail
-#          flutter clean
-#          flutter build apk --release --target-platform android-arm64 --split-per-abi
-#          ls -la build/app/outputs/flutter-apk/
+      - name: Build Android arm64 APK (unsigned)
+        run: |
+          set -euo pipefail
+          flutter clean
+          flutter build apk --release --target-platform android-arm64 --split-per-abi
+          ls -la build/app/outputs/flutter-apk/
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -146,7 +146,7 @@ jobs:
           aws --version
         shell: pwsh
 
-      - name: Find EXE, parse version and upload to S3 (Windows)
+      - name: Find EXE parent folder, zip it and upload to S3 (Windows)
         env:
           BUCKET: ${{ secrets.AWS_S3_BUCKET }}
           ENABLE_LATEST_ALIAS: ${{ secrets.ENABLE_LATEST_ALIAS }}
@@ -196,6 +196,10 @@ jobs:
 
           Write-Host "Found EXE: $exePath"
 
+          # Parent directory of the exe (the folder we'll zip)
+          $parentDir = Split-Path -Path $exePath -Parent
+          Write-Host "Parent directory to zip: $parentDir"
+
           # Read version from pubspec.yaml
           $pubText = Get-Content -Path pubspec.yaml -Raw
           $versionLine = ($pubText -split "`n" | Where-Object { $_ -match '^\s*version\s*:' } | Select-Object -First 1)
@@ -208,23 +212,41 @@ jobs:
 
           $safeVersion = $versionName
           if ($versionCode -ne "") { $safeVersion = "${safeVersion}_$versionCode" }
+          # Sanitize to safe filename chars
           $safeVersion = ($safeVersion -replace '[^A-Za-z0-9._-]','_')
 
-          $fileName = "app-windows-x64-$safeVersion.exe"
+          $zipFileName = "app-windows-x64-$safeVersion.zip"
+          $zipLocalPath = Join-Path -Path $env:TEMP -ChildPath $zipFileName
 
-          Write-Host "Uploading $exePath -> s3://$env:BUCKET/$fileName"
+          Write-Host "Creating zip: $zipLocalPath (zipping contents of $parentDir)"
 
-          aws s3 cp --only-show-error $exePath "s3://$env:BUCKET/$fileName"
+          # Remove any existing zip
+          if (Test-Path $zipLocalPath) { Remove-Item $zipLocalPath -Force -ErrorAction SilentlyContinue }
 
-          Write-Host "Uploaded: https://$($env:BUCKET).s3.$($env:AWS_REGION).amazonaws.com/$fileName"
+          # Compress the directory contents into the zip. Using -Force to overwrite if exists.
+          # We include contents of the parent folder, not the parent folder itself.
+          Compress-Archive -Path (Join-Path $parentDir '*') -DestinationPath $zipLocalPath -Force
+
+          if (-not (Test-Path $zipLocalPath)) {
+            Write-Error "ERROR: Failed to create zip $zipLocalPath"
+            exit 1
+          }
+
+          Write-Host "Zip created: $zipLocalPath (size: $((Get-Item $zipLocalPath).Length) bytes)"
+
+          Write-Host "Uploading $zipLocalPath -> s3://$env:BUCKET/$zipFileName"
+          aws s3 cp --only-show-error $zipLocalPath "s3://$env:BUCKET/$zipFileName"
+
+          $publicUrl = "https://$($env:BUCKET).s3.$($env:AWS_REGION).amazonaws.com/$zipFileName"
+          Write-Host "Uploaded: $publicUrl"
 
           if ($env:ENABLE_LATEST_ALIAS -eq "true") {
-            Write-Host "Updating latest-windows.exe alias..."
-            aws s3 cp --only-show-error $exePath "s3://$env:BUCKET/latest-windows.exe"
-            Write-Host "latest-windows.exe updated"
+            Write-Host "Updating latest-windows.zip alias..."
+            aws s3 cp --only-show-error $zipLocalPath "s3://$env:BUCKET/latest-windows.zip"
+            Write-Host "latest-windows.zip updated"
           }
 
           if ($env:ENABLE_PRESIGN -eq "true") {
-            $presigned = aws s3 presign "s3://$env:BUCKET/$fileName" --expires-in 3600
+            $presigned = aws s3 presign "s3://$env:BUCKET/$zipFileName" --expires-in 3600
             Write-Host "Presigned URL (1h): $presigned"
           }
