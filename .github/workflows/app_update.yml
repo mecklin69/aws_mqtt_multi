@@ -1,4 +1,4 @@
-name: Multi-platform build & upload to S3 (versioned filenames)
+name: Build_FileVersioning_EXE_APK_S3
 
 on:
   push:
