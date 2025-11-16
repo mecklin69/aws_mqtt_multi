@@ -146,7 +146,7 @@ jobs:
           aws --version
         shell: pwsh
 
-      - name: Zip data folder and upload to S3 (Windows)
+      - name: Find EXE, parse version and upload to S3 (Windows)
         env:
           BUCKET: ${{ secrets.AWS_S3_BUCKET }}
           ENABLE_LATEST_ALIAS: ${{ secrets.ENABLE_LATEST_ALIAS }}
@@ -158,36 +158,49 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
 
-          Write-Host "Looking for data folder under build/windows..."
+          Write-Host "Searching for built Windows EXE under build\windows..."
 
-          # Prefer exact path first (user requested build/windows/x64/runner/Debug/data)
-          $preferred = "build\windows\x64\runner\Debug\data"
-          $dataPath = $null
+          $candidates = @(
+            "build\windows\x64\runner\Release",
+            "build\windows\runner\Release",
+            "build\windows\x64\Release",
+            "build\windows\runner\Debug",
+            "build\windows\x64\runner\Debug"
+          )
 
-          if (Test-Path $preferred) {
-            $dataPath = $preferred
-            Write-Host "Found preferred data folder: $dataPath"
-          } else {
-            # Fallback: find any 'data' folder under build\windows (first match)
-            $found = Get-ChildItem -Path "build\windows" -Directory -Recurse -ErrorAction SilentlyContinue |
-                     Where-Object { $_.Name -ieq "data" } |
-                     Select-Object -First 1
-            if ($found) {
-              $dataPath = $found.FullName
-              Write-Host "Found data folder via search: $dataPath"
+          $exePath = $null
+          foreach ($p in $candidates) {
+            if (Test-Path $p) {
+              Write-Host "Found directory: $p"
+              $found = Get-ChildItem -Path $p -Filter *.exe -File -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($found) {
+                $exePath = $found.FullName
+                break
+              }
             }
           }
 
-          if (-not $dataPath) {
-            Write-Error "ERROR: Could not find data folder under build/windows. Checked preferred path and recursive search."
+          if (-not $exePath) {
+            Write-Host "Not found in common locations — searching recursively..."
+            $found = Get-ChildItem -Path "build\windows" -Recurse -Filter *.exe -File -ErrorAction SilentlyContinue |
+                     Where-Object { $_.DirectoryName -match "(?i)\\Release$" } |
+                     Select-Object -First 1
+            if ($found) { $exePath = $found.FullName }
+          }
+
+          if (-not $exePath) {
+            Write-Error "ERROR: Windows EXE not found under build\windows. Listing tree for debugging..."
             Get-ChildItem -Path build\windows -Recurse -Force | Select-Object FullName, Attributes | Format-List -Force
             exit 1
           }
+
+          Write-Host "Found EXE: $exePath"
 
           # Read version from pubspec.yaml
           $pubText = Get-Content -Path pubspec.yaml -Raw
           $versionLine = ($pubText -split "`n" | Where-Object { $_ -match '^\s*version\s*:' } | Select-Object -First 1)
           if (-not $versionLine) { Write-Error "ERROR: version not found in pubspec.yaml"; exit 1 }
+
           $versionRaw = ($versionLine -replace '^\s*version\s*:\s*','').Trim()
           $versionName = ($versionRaw -split '\+')[0]
           $versionCode = ($versionRaw -split '\+') | Select-Object -Last 1
@@ -197,58 +210,21 @@ jobs:
           if ($versionCode -ne "") { $safeVersion = "${safeVersion}_$versionCode" }
           $safeVersion = ($safeVersion -replace '[^A-Za-z0-9._-]','_')
 
-          # Create zip filename: app-windows-data-<version>.zip
-          $zipName = "app-windows-data-$safeVersion.zip"
-          $zipPath = Join-Path -Path $env:TEMP -ChildPath $zipName
+          $fileName = "app-windows-x64-$safeVersion.exe"
 
-          Write-Host "Zipping contents of: $dataPath"
-          if (Test-Path $zipPath) { Remove-Item -Path $zipPath -Force -ErrorAction SilentlyContinue }
+          Write-Host "Uploading $exePath -> s3://$env:BUCKET/$fileName"
 
-          # Compress-Archive requires files / folders. Use -LiteralPath with wildcard for contents
-          Push-Location $dataPath
-          try {
-            # compress only contents of the folder (not the parent folder)
-            # create a list of items in the data folder
-            $items = Get-ChildItem -Force -File -Directory | ForEach-Object { $_.FullName }
-            if ($items.Count -eq 0) {
-              Write-Error "ERROR: data folder exists but is empty: $dataPath"
-              exit 1
-            }
-            Compress-Archive -Path $items -DestinationPath $zipPath -Force
-          } finally {
-            Pop-Location
-          }
+          aws s3 cp --only-show-error $exePath "s3://$env:BUCKET/$fileName"
 
-          if (-not (Test-Path $zipPath)) {
-            Write-Error "ERROR: zip creation failed: $zipPath not found"
-            exit 1
-          }
+          Write-Host "Uploaded: https://$($env:BUCKET).s3.$($env:AWS_REGION).amazonaws.com/$fileName"
 
-          Write-Host "ZIP created at: $zipPath"
-
-          # Upload zip to S3
-          $s3Key = $zipName
-          $s3Uri = "s3://$($env:BUCKET)/$s3Key"
-          Write-Host "Uploading $zipPath -> $s3Uri"
-          aws s3 cp --only-show-error $zipPath $s3Uri
-
-          $publicUrl = "https://$($env:BUCKET).s3.$($env:AWS_REGION).amazonaws.com/$s3Key"
-          Write-Host "Uploaded: $publicUrl"
-
-          # Optionally update a stable alias
           if ($env:ENABLE_LATEST_ALIAS -eq "true") {
-            Write-Host "Updating latest-windows-data.zip alias..."
-            aws s3 cp --only-show-error $zipPath "s3://$($env:BUCKET)/latest-windows-data.zip"
-            Write-Host "latest-windows-data.zip updated"
+            Write-Host "Updating latest-windows.exe alias..."
+            aws s3 cp --only-show-error $exePath "s3://$env:BUCKET/latest-windows.exe"
+            Write-Host "latest-windows.exe updated"
           }
 
-          # Optionally output presigned URL (requires s3:GetObject)
           if ($env:ENABLE_PRESIGN -eq "true") {
-            $presigned = aws s3 presign "s3://$($env:BUCKET)/$s3Key" --expires-in 3600
+            $presigned = aws s3 presign "s3://$env:BUCKET/$fileName" --expires-in 3600
             Write-Host "Presigned URL (1h): $presigned"
           }
-
-          # Clean up local zip
-          Remove-Item -Path $zipPath -Force -ErrorAction SilentlyContinue
-
-          Write-Host "Done"
