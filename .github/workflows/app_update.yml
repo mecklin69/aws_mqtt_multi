@@ -34,12 +34,12 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Build Android arm64 APK (unsigned)
-        run: |
-          set -euo pipefail
-          flutter clean
-          flutter build apk --release --target-platform android-arm64 --split-per-abi
-          ls -la build/app/outputs/flutter-apk/
+#      - name: Build Android arm64 APK (unsigned)
+#        run: |
+#          set -euo pipefail
+#          flutter clean
+#          flutter build apk --release --target-platform android-arm64 --split-per-abi
+#          ls -la build/app/outputs/flutter-apk/
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
