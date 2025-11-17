@@ -5,7 +5,7 @@ import 'package:get/get.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 import 'package:flutter/widgets.dart';
 
 import 'notification_service.dart'; // ✅ for WidgetsBindingObserver
@@ -30,6 +30,14 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
 
   AwsIotService({this.onMessage, this.onConnectionStatus});
 
+  // ---------- Helpers ----------
+  void dprint(Object? msg) {
+    if (kDebugMode) {
+      // use debugPrint to avoid long-line truncation issues with print
+      debugPrint(msg?.toString());
+    }
+  }
+
   // ------------------------------------------------------------
   // 🌍 Initialize lifecycle observer
   // ------------------------------------------------------------
@@ -52,25 +60,25 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
       ..logging(on: true);
 
     client.onConnected = () {
-      print('✅ Connected to AWS IoT as $clientId');
+      dprint('✅ Connected to AWS IoT as $clientId');
       isConnected.value = true;
       onConnectionStatus?.call('Connected ✅');
       _subscribeToTopics();
     };
 
     client.onDisconnected = () {
-      print('❌ Disconnected from AWS IoT');
+      dprint('❌ Disconnected from AWS IoT');
       isConnected.value = false;
       onConnectionStatus?.call('Disconnected ❌');
     };
 
-    client.onSubscribed = (topic) => print('📡 Subscribed: $topic');
-    client.pongCallback = () => print('🏓 Ping response from AWS IoT');
+    client.onSubscribed = (topic) => dprint('📡 Subscribed: $topic');
+    client.pongCallback = () => dprint('🏓 Ping response from AWS IoT');
 
     // --- Load Certificates ---
     if (!kIsWeb) {
       try {
-        print('🔑 Loading certificates...');
+        dprint('🔑 Loading certificates...');
         final context = SecurityContext.defaultContext;
         context.setTrustedCertificatesBytes(
             (await rootBundle.load('assets/AmazonRootCA1.pem'))
@@ -85,36 +93,37 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
                 .buffer
                 .asUint8List());
         client.securityContext = context;
-        print('✅ Certificates loaded');
+        dprint('✅ Certificates loaded');
       } catch (e) {
-        print('❌ Certificate load failed: $e');
+        dprint('❌ Certificate load failed: $e');
         onConnectionStatus?.call('Certificate load failed ❌');
         return;
       }
     } else {
-      print('🌐 Web build detected → Skipping SecurityContext (TLS handled by browser)');
+      dprint(
+          '🌐 Web build detected → Skipping SecurityContext (TLS handled by browser)');
     }
 
     // --- Establish Connection ---
     try {
       if (kIsWeb) {
-        print('⚠️ MQTT direct TLS connection not supported in Web build.');
+        dprint('⚠️ MQTT direct TLS connection not supported in Web build.');
         onConnectionStatus?.call('Web build: MQTT not available ⚠️');
         return;
       }
 
-      print('🚀 Connecting to AWS IoT...');
+      dprint('🚀 Connecting to AWS IoT...');
       await client.connect();
 
       if (client.connectionStatus?.state == MqttConnectionState.connected) {
-        print('✅ Connection established with AWS IoT');
+        dprint('✅ Connection established with AWS IoT');
         onConnectionStatus?.call('Connected to AWS IoT ✅');
       } else {
-        print('❌ Connection rejected: ${client.connectionStatus}');
+        dprint('❌ Connection rejected: ${client.connectionStatus}');
         onConnectionStatus?.call('Connection failed ❌');
       }
     } catch (e) {
-      print('❌ Connection error: $e');
+      dprint('❌ Connection error: $e');
       onConnectionStatus?.call('Connection error ❌');
       client.disconnect();
       return;
@@ -126,7 +135,7 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
       final payload =
       MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
 
-      print('📩 [$topic] → $payload');
+      dprint('📩 [$topic] → $payload');
 
       if (topic.contains('/status')) {
         _handleDeviceStatus(topic, payload);
@@ -144,7 +153,7 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
   void _subscribeToTopics() {
     client.subscribe(dataTopicWildcard, MqttQos.atMostOnce);
     client.subscribe(statusTopicWildcard, MqttQos.atMostOnce);
-    print('📡 Subscribed to $dataTopicWildcard and $statusTopicWildcard');
+    dprint('📡 Subscribed to $dataTopicWildcard and $statusTopicWildcard');
   }
 
   void _handleSensorData(String topic, String payload) {
@@ -159,9 +168,9 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
         'humidity': hum,
       };
 
-      print('🌡️ $deviceId → Temp: $temp °C | Hum: $hum %');
+      dprint('🌡️ $deviceId → Temp: $temp °C | Hum: $hum %');
     } catch (e) {
-      print('⚠️ JSON parse error (data): $e');
+      dprint('⚠️ JSON parse error (data): $e');
     }
   }
 
@@ -189,11 +198,10 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
         );
       }
 
-
-      print(
+      dprint(
           '📟 Device $deviceId is now $status | Total connected: ${connectedDeviceCount.value}');
     } catch (e) {
-      print('⚠️ JSON parse error (status): $e');
+      dprint('⚠️ JSON parse error (status): $e');
     }
   }
 
@@ -201,15 +209,15 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
     try {
       client.disconnect();
       isConnected.value = false;
-      print('🔌 MQTT client disconnected');
+      dprint('🔌 MQTT client disconnected');
     } catch (e) {
-      print('⚠️ Disconnect error: $e');
+      dprint('⚠️ Disconnect error: $e');
     }
   }
 
   void disposeService() {
     try {
-      print('🧹 Disposing AWS IoT Service...');
+      dprint('🧹 Disposing AWS IoT Service...');
       client.disconnect();
       isConnected.value = false;
       connectedDeviceCount.value = 0;
@@ -217,7 +225,7 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
       deviceStatus.clear();
       onConnectionStatus?.call('Disconnected ❌ (logged out)');
     } catch (e) {
-      print('⚠️ Dispose error: $e');
+      dprint('⚠️ Dispose error: $e');
     } finally {
       if (Get.isRegistered<AwsIotService>()) {
         Get.delete<AwsIotService>();
@@ -233,10 +241,10 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
-      print('📴 App in background → disconnecting MQTT...');
+      dprint('📴 App in background → disconnecting MQTT...');
       disconnect();
     } else if (state == AppLifecycleState.resumed) {
-      print('🔁 App resumed → checking MQTT connection...');
+      dprint('🔁 App resumed → checking MQTT connection...');
       await Future.delayed(const Duration(seconds: 1));
       await reconnectIfNeeded();
     }
@@ -250,13 +258,13 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
       if (!isConnected.value ||
           client.connectionStatus?.state == MqttConnectionState.disconnected ||
           client.connectionStatus?.state == MqttConnectionState.faulted) {
-        print('🔌 Attempting AWS IoT reconnect...');
+        dprint('🔌 Attempting AWS IoT reconnect...');
         await connect();
       } else {
-        print('✅ AWS IoT still connected, no need to reconnect');
+        dprint('✅ AWS IoT still connected, no need to reconnect');
       }
     } catch (e) {
-      print('⚠️ Reconnect error: $e');
+      dprint('⚠️ Reconnect error: $e');
     }
   }
 
@@ -265,7 +273,7 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
   // ------------------------------------------------------------
   @override
   void onClose() {
-    print('🧹 AwsIotService onClose() called');
+    dprint('🧹 AwsIotService onClose() called');
     WidgetsBinding.instance.removeObserver(this);
     try {
       client.disconnect();

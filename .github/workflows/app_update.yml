@@ -31,6 +31,17 @@ jobs:
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
 
+      - name: Cache pub & gradle (Linux)
+        uses: actions/cache@v4
+        with:
+          # pub cache and gradle cache on Linux runners
+          path: |
+            ${{ runner.home }}/.pub-cache
+            ${{ runner.home }}/.gradle
+          key: ${{ runner.os }}-flutter-pub-gradle-${{ hashFiles('**/pubspec.yaml', '**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-pub-gradle-
+
       - name: Flutter pub get
         run: flutter pub get
 
@@ -38,7 +49,8 @@ jobs:
         run: |
           set -euo pipefail
           flutter clean
-          flutter build apk --release --target-platform android-arm64 --split-per-abi
+          # we already ran `flutter pub get` so use --no-pub to avoid repeated pub-get
+          flutter build apk --release --target-platform android-arm64 --split-per-abi --no-pub
           ls -la build/app/outputs/flutter-apk/
 
       - name: Configure AWS credentials
@@ -63,15 +75,12 @@ jobs:
           ENABLE_PRESIGN: ${{ secrets.ENABLE_PRESIGN }}
         run: |
           set -euo pipefail
-
           APK_SRC="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
           if [ ! -f "$APK_SRC" ]; then
             echo "ERROR: APK not found at $APK_SRC"
             ls -la build/app/outputs/flutter-apk || true
             exit 1
           fi
-
-          # Read version from pubspec.yaml (format: version: 1.3.5+42)
           VERSION_LINE=$(grep '^version:' pubspec.yaml | head -n1 || true)
           if [ -z "$VERSION_LINE" ]; then
             echo "ERROR: version not found in pubspec.yaml"
@@ -81,28 +90,21 @@ jobs:
           VERSION_NAME="${VERSION_RAW%%+*}"
           VERSION_CODE="${VERSION_RAW#*+}"
           if [ "$VERSION_CODE" = "$VERSION_RAW" ]; then VERSION_CODE=""; fi
-
           SAFE_VERSION="${VERSION_NAME}"
           if [ -n "$VERSION_CODE" ]; then SAFE_VERSION="${SAFE_VERSION}_${VERSION_CODE}"; fi
-          # Sanitize
           SAFE_VERSION=$(echo "$SAFE_VERSION" | sed 's/[^A-Za-z0-9._-]/_/g')
-
           TARGET_FILENAME="app-android-arm64-${SAFE_VERSION}.apk"
           S3_KEY="${TARGET_FILENAME}"
           S3_URI="s3://${BUCKET}/${S3_KEY}"
           PUBLIC_URL="https://${BUCKET}.s3.${AWS_REGION}.amazonaws.com/${S3_KEY}"
-
           echo "Uploading $APK_SRC -> $S3_URI"
           aws s3 cp "$APK_SRC" "$S3_URI"
-
           echo "Uploaded: $PUBLIC_URL"
-
           if [ "${ENABLE_LATEST_ALIAS:-}" = "true" ]; then
             echo "Also updating latest-android.apk alias..."
             aws s3 cp "$APK_SRC" "s3://${BUCKET}/latest-android.apk"
             echo "latest-android.apk updated"
           fi
-
           if [ "${ENABLE_PRESIGN:-}" = "true" ]; then
             PRESIGNED=$(aws s3 presign "s3://${BUCKET}/${S3_KEY}" --expires-in 3600 || true)
             echo "Presigned URL (1h): ${PRESIGNED}"
@@ -122,6 +124,17 @@ jobs:
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
 
+      - name: Cache pub & gradle (Windows)
+        uses: actions/cache@v4
+        with:
+          # common gradle & pub-cache paths on GitHub Windows runners
+          path: |
+            C:\Users\runneradmin\AppData\Roaming\Pub\Cache
+            C:\Users\runneradmin\.gradle
+          key: ${{ runner.os }}-flutter-pub-gradle-${{ hashFiles('**/pubspec.yaml', '**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-pub-gradle-
+
       - name: Flutter pub get (Windows)
         run: flutter pub get
         shell: pwsh
@@ -130,7 +143,8 @@ jobs:
         run: |
           flutter config --enable-windows-desktop || true
           flutter clean
-          flutter build windows --release
+          # --no-pub avoids a second pub-get since we already ran it
+          flutter build windows --release --no-pub
         shell: pwsh
 
       - name: Configure AWS credentials (Windows)
@@ -151,23 +165,15 @@ jobs:
           BUCKET: ${{ secrets.AWS_S3_BUCKET }}
           ENABLE_LATEST_ALIAS: ${{ secrets.ENABLE_LATEST_ALIAS }}
           ENABLE_PRESIGN: ${{ secrets.ENABLE_PRESIGN }}
-          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_REGION: ${{ env:AWS_REGION }}
         shell: pwsh
         run: |
-          # PowerShell error handling
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
-
           Write-Host "Searching for built Windows EXE under build\windows..."
-
           $candidates = @(
             "build\windows\x64\runner\Release",
-            "build\windows\runner\Release",
-            "build\windows\x64\Release",
-            "build\windows\runner\Debug",
-            "build\windows\x64\runner\Debug"
           )
-
           $exePath = $null
           foreach ($p in $candidates) {
             if (Test-Path $p) {
@@ -179,7 +185,6 @@ jobs:
               }
             }
           }
-
           if (-not $exePath) {
             Write-Host "Not found in common locations — searching recursively..."
             $found = Get-ChildItem -Path "build\windows" -Recurse -Filter *.exe -File -ErrorAction SilentlyContinue |
@@ -187,65 +192,43 @@ jobs:
                      Select-Object -First 1
             if ($found) { $exePath = $found.FullName }
           }
-
           if (-not $exePath) {
             Write-Error "ERROR: Windows EXE not found under build\windows. Listing tree for debugging..."
             Get-ChildItem -Path build\windows -Recurse -Force | Select-Object FullName, Attributes | Format-List -Force
             exit 1
           }
-
           Write-Host "Found EXE: $exePath"
-
-          # Parent directory of the exe (the folder we'll zip)
           $parentDir = Split-Path -Path $exePath -Parent
           Write-Host "Parent directory to zip: $parentDir"
-
-          # Read version from pubspec.yaml
           $pubText = Get-Content -Path pubspec.yaml -Raw
           $versionLine = ($pubText -split "`n" | Where-Object { $_ -match '^\s*version\s*:' } | Select-Object -First 1)
           if (-not $versionLine) { Write-Error "ERROR: version not found in pubspec.yaml"; exit 1 }
-
           $versionRaw = ($versionLine -replace '^\s*version\s*:\s*','').Trim()
           $versionName = ($versionRaw -split '\+')[0]
           $versionCode = ($versionRaw -split '\+') | Select-Object -Last 1
           if ($versionCode -eq $versionName) { $versionCode = "" }
-
           $safeVersion = $versionName
           if ($versionCode -ne "") { $safeVersion = "${safeVersion}_$versionCode" }
-          # Sanitize to safe filename chars
           $safeVersion = ($safeVersion -replace '[^A-Za-z0-9._-]','_')
-
           $zipFileName = "app-windows-x64-$safeVersion.zip"
           $zipLocalPath = Join-Path -Path $env:TEMP -ChildPath $zipFileName
-
           Write-Host "Creating zip: $zipLocalPath (zipping contents of $parentDir)"
-
-          # Remove any existing zip
           if (Test-Path $zipLocalPath) { Remove-Item $zipLocalPath -Force -ErrorAction SilentlyContinue }
-
-          # Compress the directory contents into the zip. Using -Force to overwrite if exists.
-          # We include contents of the parent folder, not the parent folder itself.
           Compress-Archive -Path (Join-Path $parentDir '*') -DestinationPath $zipLocalPath -Force
-
           if (-not (Test-Path $zipLocalPath)) {
             Write-Error "ERROR: Failed to create zip $zipLocalPath"
             exit 1
           }
-
           Write-Host "Zip created: $zipLocalPath (size: $((Get-Item $zipLocalPath).Length) bytes)"
-
           Write-Host "Uploading $zipLocalPath -> s3://$env:BUCKET/$zipFileName"
           aws s3 cp --only-show-error $zipLocalPath "s3://$env:BUCKET/$zipFileName"
-
           $publicUrl = "https://$($env:BUCKET).s3.$($env:AWS_REGION).amazonaws.com/$zipFileName"
           Write-Host "Uploaded: $publicUrl"
-
           if ($env:ENABLE_LATEST_ALIAS -eq "true") {
             Write-Host "Updating latest-windows.zip alias..."
             aws s3 cp --only-show-error $zipLocalPath "s3://$env:BUCKET/latest-windows.zip"
             Write-Host "latest-windows.zip updated"
           }
-
           if ($env:ENABLE_PRESIGN -eq "true") {
             $presigned = aws s3 presign "s3://$env:BUCKET/$zipFileName" --expires-in 3600
             Write-Host "Presigned URL (1h): $presigned"
