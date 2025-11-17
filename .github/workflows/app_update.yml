@@ -161,7 +161,7 @@ jobs:
           Write-Host "Searching for built Windows EXE under build\windows..."
 
           $candidates = @(
-            "build\windows\x64\runner\Release",
+            "build\windows\x64\runner\Release"
           )
 
           $exePath = $null
