@@ -165,7 +165,7 @@ jobs:
           BUCKET: ${{ secrets.AWS_S3_BUCKET }}
           ENABLE_LATEST_ALIAS: ${{ secrets.ENABLE_LATEST_ALIAS }}
           ENABLE_PRESIGN: ${{ secrets.ENABLE_PRESIGN }}
-          AWS_REGION: ${{ env:AWS_REGION }}
+          AWS_REGION: "ap-south-1"
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
