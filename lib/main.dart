@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:Elevate/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+// import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart'; // ✅ Add this
@@ -15,10 +16,13 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // ✅ Initialize local storage
+
   await StorageService.init();
 
   // ✅ Initialize notifications
-  await NotificationService.init();
+
+if (Platform.isAndroid) {
+  await NotificationService.init();}
 
   // ✅ Handle notification permissions cross-platform
   if (Platform.isAndroid) {
@@ -29,6 +33,7 @@ void main() async {
     } else {
       print('⚠️ Notification permission denied');
     }
+
   } else if (Platform.isIOS) {
     final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
     final iosImplementation = flutterLocalNotificationsPlugin
