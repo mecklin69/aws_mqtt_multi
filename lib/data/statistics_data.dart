@@ -1,15 +1,24 @@
 import '../models/stat_circle_data.dart';
-
-// Centralized data for the statistics section.
-// This allows you to easily update the values and labels for the stat circles.
+import '../services/aws_iot_services.dart';
+import '../services/storage_service.dart';
 
 class StatisticsData {
-  static const String userName = 'mecklin69';
+  static String userName = StorageService.getUsername();
 
-  static final List<StatCircleData> statCircles = [
-    const StatCircleData(value: 0, total: 2, label: 'Devices'),
-    const StatCircleData(value: 0, total: 4, label: 'Dashboards'),
-    const StatCircleData(value: 0, total: 4, label: 'Data Buckets'),
-    const StatCircleData(value: 0, total: 4, label: 'Endpoints'),
-  ];
+  // Pass the service here so we use the reactive data
+  static List<StatCircleData> getStatCircles(AwsIotService aws) {
+    final deviceCount = StorageService.getDeviceCount();
+    final deviceEntries = aws.devices.entries.toList();
+
+    return [
+      StatCircleData(
+          value: deviceEntries.length,
+          total: deviceCount,
+          label: 'Devices'
+      ),
+      const StatCircleData(value: 0, total: 4, label: 'Alarms'),
+      const StatCircleData(value: 0, total: 4, label: 'Critical'),
+      const StatCircleData(value: 0, total: 4, label: 'Locations'),
+    ];
+  }
 }

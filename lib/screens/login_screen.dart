@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../services/amplify_service.dart';
 import 'dashboard_screen.dart';
 import '../services/storage_service.dart';
 import '../services/aws_iot_services.dart'; // ✅ Import your AWS IoT service
@@ -48,37 +49,47 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    if (username == "admin" && password == "1234") {
-      setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
 
-      // ✅ Clear any old AWS IoT service instances (in case of re-login)
-      if (Get.isRegistered<AwsIotService>()) {
-         Get.find<AwsIotService>().disposeService();
-      }
+    final user = await AmplifyService.login(username, password);
 
-      // ✅ Save login state
-      await StorageService.saveLogin(username);
-
-      // ✅ Recreate and connect to AWS IoT
-      final awsService = Get.put(
-        AwsIotService(
-          onMessage: (topic, data) => print('📩 $topic → $data'),
-          onConnectionStatus: (status) => print('🔌 $status'),
-        ),
-        permanent: true, // stays alive until logout
-      );
-
-      // Add a short delay for socket cleanup before connecting
-      await Future.delayed(const Duration(seconds: 1));
-      await awsService.connect();
-
+    if (user == null) {
       setState(() => _isLoading = false);
-
-      // ✅ Navigate to Dashboard
-      Get.offAll(() => const DashboardScreen());
-    } else {
-      _showSnack("Login Failed", "Invalid username or password");
+      _showSnack("Login Failed", "Invalid email or password");
+      return;
     }
+
+    // ✅ Extract DB values
+    final vendorID = user['vendorID'];
+    final companyName = user['companyName'];
+    final deviceCount = user['deviceCount'];
+
+    // ✅ Store locally
+    await StorageService.saveLogin(username);
+    await StorageService.saveVendor(vendorID);
+    await StorageService.saveCompany(companyName);
+    await StorageService.saveDeviceCount(deviceCount);
+
+    // ✅ Dispose old IoT
+    if (Get.isRegistered<AwsIotService>()) {
+      Get.find<AwsIotService>().disposeService();
+    }
+
+    // ✅ Recreate AWS IoT
+    final awsService = Get.put(
+      AwsIotService(
+        onMessage: (topic, data) => print('📩 $topic → $data'),
+        onConnectionStatus: (status) => print('🔌 $status'),
+      ),
+      permanent: true,
+    );
+
+    await Future.delayed(const Duration(seconds: 1));
+    await awsService.connect();
+
+    setState(() => _isLoading = false);
+
+    Get.offAll(() => const DashboardScreen());
   }
 
   // -------------------------------------------------------------

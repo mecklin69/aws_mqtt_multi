@@ -83,32 +83,39 @@ class StatisticsSection extends StatelessWidget {
           const SizedBox(height: 32),
 
           // --- STAT CIRCLES ---
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isNarrow = constraints.maxWidth < 600;
+          // --- STAT CIRCLES ---
+          Obx(() {
+            // Accessing awsService.devices inside Obx tells GetX to listen for changes
+            final deviceEntries = awsService.devices.entries.toList();
 
-              final statWidgets = StatisticsData.statCircles
-                  .map((data) => StatCircle(
-                value: data.value,
-                total: data.total,
-                label: data.label,
-              ))
-                  .toList();
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 600;
 
-              return isNarrow
-                  ? Wrap(
-                spacing: 20.0,
-                runSpacing: 24.0,
-                alignment: WrapAlignment.spaceBetween,
-                children: statWidgets,
-              )
-                  : Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: statWidgets,
-              );
-            },
-          ),
+                // Now this method runs every time awsService.devices updates
+                final statWidgets = StatisticsData.getStatCircles(awsService)
+                    .map((data) => StatCircle(
+                  value: data.value,
+                  total: data.total,
+                  label: data.label,
+                ))
+                    .toList();
+
+                return isNarrow
+                    ? Wrap(
+                  spacing: 20.0,
+                  runSpacing: 24.0,
+                  alignment: WrapAlignment.spaceBetween,
+                  children: statWidgets,
+                )
+                    : Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: statWidgets,
+                );
+              },
+            );
+          }),
         ],
       ),
     );

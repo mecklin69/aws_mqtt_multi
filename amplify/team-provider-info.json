@@ -1,0 +1,20 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-adminpanel-dev-c0574-authRole",
+      "UnauthRoleArn": "arn:aws:iam::975049938380:role/amplify-adminpanel-dev-c0574-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::975049938380:role/amplify-adminpanel-dev-c0574-authRole",
+      "Region": "ap-south-1",
+      "DeploymentBucketName": "amplify-adminpanel-dev-c0574-deployment",
+      "UnauthRoleName": "amplify-adminpanel-dev-c0574-unauthRole",
+      "StackName": "amplify-adminpanel-dev-c0574",
+      "StackId": "arn:aws:cloudformation:ap-south-1:975049938380:stack/amplify-adminpanel-dev-c0574/a6a622d0-0077-11f1-a168-0292f2414fc5",
+      "AmplifyAppId": "d1w2fqar2n68xn"
+    },
+    "categories": {
+      "api": {
+        "adminpanel": {}
+      }
+    }
+  }
+}

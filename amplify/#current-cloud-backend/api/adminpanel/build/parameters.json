@@ -1,0 +1,7 @@
+{
+    "AppSyncApiName": "adminpanel",
+    "DynamoDBBillingMode": "PAY_PER_REQUEST",
+    "DynamoDBEnableServerSideEncryption": false,
+    "S3DeploymentBucket": "amplify-adminpanel-dev-c0574-deployment",
+    "S3DeploymentRootKey": "amplify-appsync-files/96deef42fc0f754d4513f9438a88833c417a8468"
+}

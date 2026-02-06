@@ -1,3 +1,4 @@
+import 'package:Elevate/screens/DeviceSettings.dart';
 import 'package:Elevate/widgets/dashboard/Alarms.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -27,13 +28,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
  AlarmsPage(),
     Center(child: Text('Access Tokens Page')),
     Center(child: Text('Assets Page')),
-    Center(child: Text('File Storages Page')),
-    Center(child: Text('Products Page')),
-    Center(child: Text('Projects Page')),
-    Center(child: Text('Plugins Page')),
-    Center(child: Text('Toolbox Page')),
-    Center(child: Text('User Accounts Page')),
-    Center(child: Text('Cluster Hosts Page')),
+    FirmwareFlashPage(),
+
   ];
 
   @override

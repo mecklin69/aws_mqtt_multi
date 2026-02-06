@@ -1,0 +1,267 @@
+type Client {
+  id: ID!
+  vendorID: String!
+  firstName: String!
+  lastName: String!
+  email: String!
+  password: String!
+  location: String!
+  companyName: String!
+  deviceCount: Int!
+  deploymentDate: String!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+input ModelStringInput {
+  ne: String
+  eq: String
+  le: String
+  lt: String
+  ge: String
+  gt: String
+  contains: String
+  notContains: String
+  between: [String]
+  beginsWith: String
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+  size: ModelSizeInput
+}
+
+input ModelIntInput {
+  ne: Int
+  eq: Int
+  le: Int
+  lt: Int
+  ge: Int
+  gt: Int
+  between: [Int]
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+}
+
+input ModelFloatInput {
+  ne: Float
+  eq: Float
+  le: Float
+  lt: Float
+  ge: Float
+  gt: Float
+  between: [Float]
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+}
+
+input ModelBooleanInput {
+  ne: Boolean
+  eq: Boolean
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+}
+
+input ModelIDInput {
+  ne: ID
+  eq: ID
+  le: ID
+  lt: ID
+  ge: ID
+  gt: ID
+  contains: ID
+  notContains: ID
+  between: [ID]
+  beginsWith: ID
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+  size: ModelSizeInput
+}
+
+input ModelSubscriptionStringInput {
+  ne: String
+  eq: String
+  le: String
+  lt: String
+  ge: String
+  gt: String
+  contains: String
+  notContains: String
+  between: [String]
+  beginsWith: String
+  in: [String]
+  notIn: [String]
+}
+
+input ModelSubscriptionIntInput {
+  ne: Int
+  eq: Int
+  le: Int
+  lt: Int
+  ge: Int
+  gt: Int
+  between: [Int]
+  in: [Int]
+  notIn: [Int]
+}
+
+input ModelSubscriptionFloatInput {
+  ne: Float
+  eq: Float
+  le: Float
+  lt: Float
+  ge: Float
+  gt: Float
+  between: [Float]
+  in: [Float]
+  notIn: [Float]
+}
+
+input ModelSubscriptionBooleanInput {
+  ne: Boolean
+  eq: Boolean
+}
+
+input ModelSubscriptionIDInput {
+  ne: ID
+  eq: ID
+  le: ID
+  lt: ID
+  ge: ID
+  gt: ID
+  contains: ID
+  notContains: ID
+  between: [ID]
+  beginsWith: ID
+  in: [ID]
+  notIn: [ID]
+}
+
+enum ModelAttributeTypes {
+  binary
+  binarySet
+  bool
+  list
+  map
+  number
+  numberSet
+  string
+  stringSet
+  _null
+}
+
+input ModelSizeInput {
+  ne: Int
+  eq: Int
+  le: Int
+  lt: Int
+  ge: Int
+  gt: Int
+  between: [Int]
+}
+
+enum ModelSortDirection {
+  ASC
+  DESC
+}
+
+type ModelClientConnection {
+  items: [Client]!
+  nextToken: String
+}
+
+input ModelClientFilterInput {
+  id: ModelIDInput
+  vendorID: ModelStringInput
+  firstName: ModelStringInput
+  lastName: ModelStringInput
+  email: ModelStringInput
+  password: ModelStringInput
+  location: ModelStringInput
+  companyName: ModelStringInput
+  deviceCount: ModelIntInput
+  deploymentDate: ModelStringInput
+  createdAt: ModelStringInput
+  updatedAt: ModelStringInput
+  and: [ModelClientFilterInput]
+  or: [ModelClientFilterInput]
+  not: ModelClientFilterInput
+}
+
+type Query {
+  getClient(vendorID: String!): Client
+  listClients(vendorID: String, filter: ModelClientFilterInput, limit: Int, nextToken: String, sortDirection: ModelSortDirection): ModelClientConnection
+}
+
+input ModelClientConditionInput {
+  firstName: ModelStringInput
+  lastName: ModelStringInput
+  email: ModelStringInput
+  password: ModelStringInput
+  location: ModelStringInput
+  companyName: ModelStringInput
+  deviceCount: ModelIntInput
+  deploymentDate: ModelStringInput
+  and: [ModelClientConditionInput]
+  or: [ModelClientConditionInput]
+  not: ModelClientConditionInput
+  createdAt: ModelStringInput
+  updatedAt: ModelStringInput
+}
+
+input CreateClientInput {
+  id: ID
+  vendorID: String!
+  firstName: String!
+  lastName: String!
+  email: String!
+  password: String!
+  location: String!
+  companyName: String!
+  deviceCount: Int!
+  deploymentDate: String!
+}
+
+input UpdateClientInput {
+  id: ID
+  vendorID: String!
+  firstName: String
+  lastName: String
+  email: String
+  password: String
+  location: String
+  companyName: String
+  deviceCount: Int
+  deploymentDate: String
+}
+
+input DeleteClientInput {
+  vendorID: String!
+}
+
+type Mutation {
+  createClient(input: CreateClientInput!, condition: ModelClientConditionInput): Client
+  updateClient(input: UpdateClientInput!, condition: ModelClientConditionInput): Client
+  deleteClient(input: DeleteClientInput!, condition: ModelClientConditionInput): Client
+}
+
+input ModelSubscriptionClientFilterInput {
+  id: ModelSubscriptionIDInput
+  vendorID: ModelSubscriptionStringInput
+  firstName: ModelSubscriptionStringInput
+  lastName: ModelSubscriptionStringInput
+  email: ModelSubscriptionStringInput
+  password: ModelSubscriptionStringInput
+  location: ModelSubscriptionStringInput
+  companyName: ModelSubscriptionStringInput
+  deviceCount: ModelSubscriptionIntInput
+  deploymentDate: ModelSubscriptionStringInput
+  createdAt: ModelSubscriptionStringInput
+  updatedAt: ModelSubscriptionStringInput
+  and: [ModelSubscriptionClientFilterInput]
+  or: [ModelSubscriptionClientFilterInput]
+}
+
+type Subscription {
+  onCreateClient(filter: ModelSubscriptionClientFilterInput): Client @aws_subscribe(mutations: ["createClient"])
+  onUpdateClient(filter: ModelSubscriptionClientFilterInput): Client @aws_subscribe(mutations: ["updateClient"])
+  onDeleteClient(filter: ModelSubscriptionClientFilterInput): Client @aws_subscribe(mutations: ["deleteClient"])
+}

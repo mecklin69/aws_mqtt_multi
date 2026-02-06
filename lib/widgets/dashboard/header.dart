@@ -17,7 +17,7 @@ class DashboardHeader extends StatelessWidget {
             const Icon(Icons.account_circle,
                 color: app_colors.slateGrey, size: 28),
             const SizedBox(width: 8),
-            const Text(StatisticsData.userName,
+             Text(StatisticsData.userName,
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(width: 4),
             const Icon(Icons.arrow_drop_down, color: app_colors.slateGrey),

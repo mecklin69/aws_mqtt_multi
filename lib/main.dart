@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:Elevate/services/amplify_service.dart';
 import 'package:Elevate/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -18,7 +19,7 @@ void main() async {
   // ✅ Initialize local storage
 
   await StorageService.init();
-
+  await AmplifyService.configure();
   // ✅ Initialize notifications
 
 if (Platform.isAndroid) {
