@@ -1,67 +1,63 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
+  static final FlutterLocalNotificationsPlugin _notificationsPlugin =
+  FlutterLocalNotificationsPlugin();
 
-static final FlutterLocalNotificationsPlugin _plugin =
+  static Future<void> init() async {
+    // 1. Android Settings
+    const AndroidInitializationSettings initializationSettingsAndroid =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
 
-FlutterLocalNotificationsPlugin();
+    // 2. Windows Settings (This replaces the 'register' method)
+    // GUID can be any unique string; AppName is what shows in the toast
+    const WindowsInitializationSettings initializationSettingsWindows =
+    WindowsInitializationSettings(
+      appName: 'Elevate Engineer',
+      appUserModelId: 'com.example.elevate', // A unique identifier for Windows
+      guid: 'E621E1F8-C36C-495A-93FC-0C247A3E6E5F', // A random unique GUID
+    );
 
-static Future<void> init() async {
+    // 3. Combine Settings
+    const InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+      windows: initializationSettingsWindows,
+    );
 
-const AndroidInitializationSettings androidInit =
+    // 4. Initialize everything
+    await _notificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (details) {
+        if (kDebugMode) {
+          print("Notification Interaction Detected");
+        }
+      },
+    );
+  }
 
-AndroidInitializationSettings('@mipmap/ic_launcher');
+  static Future<void> showNotification({required String title, required String body}) async {
+    // Standard platform details
+    const NotificationDetails platformDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'alarm_channel',
+        'Alarms',
+        importance: Importance.max,
+        priority: Priority.high,
+      ),
+      // Windows implementation inherits the main initialize settings
+    );
 
-const InitializationSettings initSettings =
-
-InitializationSettings(android: androidInit);
-
-
-
-await _plugin.initialize(initSettings);
-
-}
-
-static Future<void> showNotification({
-
-required String title,
-
-required String body,
-
-}) async {
-
-const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-
-  'aws_iot_channel',
-
-  'AWS IoT Alerts',
-
-  channelDescription: 'Device status and updates',
-
-  importance: Importance.max,
-
-  priority: Priority.high,
-
-  playSound: true,
-
-);
-
-
-
-const NotificationDetails details = NotificationDetails(android: androidDetails);
-
-await _plugin.show(
-
-  DateTime.now().millisecondsSinceEpoch ~/ 1000,
-
-  title,
-
-  body,
-
-  details,
-
-);
-
-}
-
+    try {
+      await _notificationsPlugin.show(
+        DateTime.now().millisecond, // Ensures each notification has a fresh ID
+        title,
+        body,
+        platformDetails,
+      );
+    } catch (e) {
+      print("Windows Notification failed: $e");
+    }
+  }
 }

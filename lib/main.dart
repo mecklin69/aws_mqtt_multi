@@ -17,7 +17,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // ✅ Initialize local storage
-
+try{
+  if(Platform.isWindows) {
+    await NotificationService.init();
+  }
+}catch(e){}
   await StorageService.init();
   await AmplifyService.configure();
   // ✅ Initialize notifications
