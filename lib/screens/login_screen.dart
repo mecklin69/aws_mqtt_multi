@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/amplify_service.dart';
@@ -41,55 +44,85 @@ class _LoginPageState extends State<LoginPage> {
   // 🚀 Handle Login
   // -------------------------------------------------------------
   Future<void> _handleLogin() async {
-    final username = _usernameController.text.trim();
+    final email = _usernameController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (username.isEmpty || password.isEmpty) {
+    if (email.isEmpty || password.isEmpty) {
       _showSnack("Error", "Please fill in all fields");
       return;
     }
 
     setState(() => _isLoading = true);
 
-    final user = await AmplifyService.login(username, password);
+    const String scanQuery = '''
+    query ListClientsByEmail(\$email: String!) {
+      listClients(filter: {email: {eq: \$email}}) {
+        items {
+          id
+          email
+          password
+          vendorID
+          companyName
+          deviceCount
+        }
+      }
+    }
+  ''';
 
-    if (user == null) {
+    try {
+      final response = await Amplify.API.query(
+        request: GraphQLRequest<String>(
+          document: scanQuery,
+          variables: {'email': email},
+        ),
+      ).response;
+
+      if (response.data == null) {
+        _showSnack("Login Failed", "Database returned no response.");
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final Map<String, dynamic> decodedResponse = jsonDecode(response.data!);
+
+      // --- FIX: Access 'listClients' directly from the root ---
+      final Map<String, dynamic>? listClients = decodedResponse['listClients'] as Map<String, dynamic>?;
+
+      if (listClients == null) {
+        debugPrint("❌ Error: 'listClients' key missing in response: $decodedResponse");
+        _showSnack("Login Failed", "Invalid response structure.");
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final List items = listClients['items'] as List? ?? [];
+
+      if (items.isEmpty) {
+        _showSnack("Login Failed", "User not found");
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final user = items[0];
+
+      if (user['password'] == password) {
+        // ✅ Success logic
+        await StorageService.saveLogin(email);
+        await StorageService.saveVendor(user['vendorID']);
+        await StorageService.saveCompany(user['companyName']);
+        await StorageService.saveDeviceCount(user['deviceCount']);
+
+        setState(() => _isLoading = false);
+        Get.offAll(() => const DashboardScreen());
+      } else {
+        _showSnack("Login Failed", "Invalid password");
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      debugPrint("Scan Error: $e");
       setState(() => _isLoading = false);
-      _showSnack("Login Failed", "Invalid email or password");
-      return;
+      _showSnack("Error", "Login failed");
     }
-
-    // ✅ Extract DB values
-    final vendorID = user['vendorID'];
-    final companyName = user['companyName'];
-    final deviceCount = user['deviceCount'];
-
-    // ✅ Store locally
-    await StorageService.saveLogin(username);
-    await StorageService.saveVendor(vendorID);
-    await StorageService.saveCompany(companyName);
-    await StorageService.saveDeviceCount(deviceCount);
-
-    // ✅ Dispose old IoT
-    if (Get.isRegistered<AwsIotService>()) {
-      Get.find<AwsIotService>().disposeService();
-    }
-
-    // ✅ Recreate AWS IoT
-    final awsService = Get.put(
-      AwsIotService(
-        onMessage: (topic, data) => print('📩 $topic → $data'),
-        onConnectionStatus: (status) => print('🔌 $status'),
-      ),
-      permanent: true,
-    );
-
-    await Future.delayed(const Duration(seconds: 1));
-    await awsService.connect();
-
-    setState(() => _isLoading = false);
-
-    Get.offAll(() => const DashboardScreen());
   }
 
   // -------------------------------------------------------------

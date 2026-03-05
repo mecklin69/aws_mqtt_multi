@@ -4,12 +4,12 @@ const amplifyconfig = '''{
     "api": {
         "plugins": {
             "awsAPIPlugin": {
-                "adminpanel": {
+                "adminpaneliot": {
                     "endpointType": "GraphQL",
-                    "endpoint": "https://usmaobwxpza2jnngz2exlv2ury.appsync-api.ap-south-1.amazonaws.com/graphql",
+                    "endpoint": "https://xty3yj7kkjgm7efmek3c7ohpfa.appsync-api.ap-south-1.amazonaws.com/graphql",
                     "region": "ap-south-1",
                     "authorizationType": "API_KEY",
-                    "apiKey": "da2-iepdmvitang4zgc2yzhy22e5oa"
+                    "apiKey": "da2-utzxeucxmvcrdllr6fi2afm6uy"
                 }
             }
         }
