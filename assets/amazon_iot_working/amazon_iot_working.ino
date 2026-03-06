@@ -10,7 +10,7 @@ const char* password = "12345678";
 // ========== AWS IoT Core Details ==========
 const char* mqtt_server = "a1uik643utyg4s-ats.iot.ap-south-1.amazonaws.com";  // <-- Change this
 const int mqtt_port = 8883;
-const char* thingName = "esp8266_1";
+const char* thingName = "Sensor 1 UK07";
 
 // ========== AWS Certificates ==========
 static const char ca_cert[] PROGMEM = R"EOF(
@@ -163,7 +163,8 @@ void publishData() {
   StaticJsonDocument<200> doc;
   doc["device"] = thingName;
   doc["temperature"] = random(25, 35);  // Replace with your real sensor
-  doc["humidity"] = random(50, 70);     // Replace with your real sensor
+  doc["humidity"] = random(50, 70);    
+  doc["turbidity"]=random(0,10); // Replace with your real sensor
   doc["timestamp"] = millis();
 
   char payload[256];

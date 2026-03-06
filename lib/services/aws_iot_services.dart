@@ -162,13 +162,15 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
       final deviceId = data['device'] ?? 'unknown';
       final temp = data['temperature']?.toString() ?? '--';
       final hum = data['humidity']?.toString() ?? '--';
+      final tur = data['turbidity']?.toString() ?? '--';
 
       devices[deviceId] = {
         'temperature': temp,
         'humidity': hum,
+        'turbidity':tur,
       };
 
-      dprint('🌡️ $deviceId → Temp: $temp °C | Hum: $hum %');
+      dprint('🌡️ $deviceId → Temp: $temp °C | Hum: $hum % | Turb: $tur NTU');
     } catch (e) {
       dprint('⚠️ JSON parse error (data): $e');
     }

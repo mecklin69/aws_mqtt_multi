@@ -7,6 +7,7 @@ import '../../services/aws_iot_services.dart';
 class ConnectedDevicesLocation extends StatelessWidget {
   const ConnectedDevicesLocation({super.key});
 
+
   @override
   Widget build(BuildContext context) {
     final AwsIotService aws = Get.find<AwsIotService>();
@@ -99,6 +100,7 @@ class ConnectedDevicesLocation extends StatelessWidget {
       String status, {double? width}) {
     final temp = data['temperature'] ?? '--';
     final hum = data['humidity'] ?? '--';
+    final turb=data['turbidity'] ?? '--';
     final isOnline = status == 'connected';
 
     return Container(
@@ -160,6 +162,13 @@ class ConnectedDevicesLocation extends StatelessWidget {
                 label: 'Hum',
                 value: '$hum%',
                 color: Colors.teal,
+              ),
+              const SizedBox(width: 20),
+              _buildMetric(
+                icon: Icons.scatter_plot_outlined,
+                label: 'Turb',
+                value: turb,
+                color: Colors.deepPurple,
               ),
             ],
           ),
