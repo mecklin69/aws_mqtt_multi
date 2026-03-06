@@ -1,55 +1,124 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../services/aws_iot_services.dart'; // Adjust path as needed
+import 'package:csv/csv.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import '../services/aws_iot_services.dart';
 
 class DataBucketPage extends StatelessWidget {
   const DataBucketPage({super.key});
 
+  Future<void> _exportLogs(List<Map<String, dynamic>> logs) async {
+    if (logs.isEmpty) return;
+
+    // 1. Convert logs to CSV
+    List<List<dynamic>> rows = [
+      ['DeviceID', 'Temperature', 'Humidity', 'Turbidity', 'Timestamp'],
+      ...logs.map((e) => [
+        e['device'],
+        e['temperature'],
+        e['humidity'],
+        e['turbidity'],
+        e['timestamp']
+      ])
+    ];
+    String csv = const ListToCsvConverter().convert(rows);
+
+    // 2. Open "Save As" dialog for Windows
+    String? outputFile = await FilePicker.platform.saveFile(
+      dialogTitle: 'Please select where to save your file:',
+      fileName: 'sensor_logs_${DateTime.now().millisecondsSinceEpoch}.csv',
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+    );
+
+    if (outputFile != null) {
+      // 3. Save the file locally
+      final file = File(outputFile);
+      await file.writeAsString(csv);
+
+      // Optional: Show a snackbar confirming success
+      Get.snackbar("Success", "File saved to: $outputFile",
+          snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Access the existing service instance
+    // Inject the service
     final AwsIotService iotService = Get.find<AwsIotService>();
 
-    return Scaffold(
-      appBar: AppBar(title: const Text("Device Data Buckets")),
-      body: Obx(() {
-        // Obx listens to changes in the 'devices' map
-        if (iotService.devices.isEmpty) {
-          return const Center(child: Text("No device data received yet."));
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+
+        // Exit prompt if there is unsaved data
+        if (iotService.logBuffer.isNotEmpty) {
+          final shouldExit = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text("Unsaved Logs"),
+              content: const Text("You have unsaved data. Do you want to export before exiting?"),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Stay")),
+                TextButton(onPressed: () { _exportLogs(iotService.logBuffer); Navigator.pop(ctx, true); }, child: const Text("Save & Exit")),
+                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Discard")),
+              ],
+            ),
+          );
+          if (shouldExit == true) Navigator.of(context).pop();
+        } else {
+          Navigator.of(context).pop();
         }
-
-        return GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, // 2 columns
-            childAspectRatio: 1.5,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-          ),
-          itemCount: iotService.devices.length,
-          itemBuilder: (context, index) {
-            String deviceId = iotService.devices.keys.elementAt(index);
-            Map<String, String> data = iotService.devices[deviceId]!;
-
-            return Card(
-              elevation: 4,
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(deviceId, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    const Divider(),
-                    Text("Temp: ${data['temperature']}°C"),
-                    Text("Hum: ${data['humidity']}%"),
-                    Text("Turb: ${data['turbidity']} NTU"),
-                  ],
-                ),
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Real-Time Data Logger"),
+          actions: [
+            // Logging Toggle
+            Obx(() => IconButton(
+              icon: Icon(
+                iotService.isLogging.value ? Icons.stop_circle : Icons.play_circle,
+                color: iotService.isLogging.value ? Colors.red : Colors.green,
+                size: 32,
               ),
-            );
-          },
-        );
-      }),
+              onPressed: () => iotService.isLogging.value = !iotService.isLogging.value,
+            )),
+            // Export Button
+            Obx(() => IconButton(
+              icon: const Icon(Icons.download),
+              onPressed: iotService.logBuffer.isEmpty ? null : () => _exportLogs(iotService.logBuffer),
+            )),
+          ],
+        ),
+        body: Obx(() {
+          if (iotService.logBuffer.isEmpty) {
+            return const Center(child: Text("Logging inactive or no data received."));
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(8),
+            itemCount: iotService.logBuffer.length,
+            itemBuilder: (ctx, i) {
+              final log = iotService.logBuffer[i];
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.sensors, color: Colors.indigo),
+                  title: Text("Device: ${log['device']}"),
+                  subtitle: Text(
+                    "Temp: ${log['temperature']}°C | Hum: ${log['humidity']}% | Turb: ${log['turbidity']} NTU",
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  trailing: Text(log['timestamp'].toString().split(' ').last.split('.').first),
+                ),
+              );
+            },
+          );
+        }),
+      ),
     );
   }
 }

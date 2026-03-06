@@ -16,11 +16,12 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
 
   final String dataTopicWildcard = 'esp8266/+/data';
   final String statusTopicWildcard = 'esp8266/+/status';
-
+// ADD THESE:
+  var isLogging = false.obs;
+  var logBuffer = <Map<String, dynamic>>[].obs;
   var isConnected = false.obs;
   var connectedDeviceCount = 0.obs;
-
-  var devices = <String, Map<String, String>>{}.obs;
+  var devices = <String, Map<String, dynamic>>{}.obs;
   var deviceStatus = <String, String>{}.obs;
 
   late MqttServerClient client;
@@ -156,23 +157,28 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
     dprint('📡 Subscribed to $dataTopicWildcard and $statusTopicWildcard');
   }
 
+  // Inside AwsIotService
   void _handleSensorData(String topic, String payload) {
     try {
       final data = jsonDecode(payload);
       final deviceId = data['device'] ?? 'unknown';
-      final temp = data['temperature']?.toString() ?? '--';
-      final hum = data['humidity']?.toString() ?? '--';
-      final tur = data['turbidity']?.toString() ?? '--';
-
-      devices[deviceId] = {
-        'temperature': temp,
-        'humidity': hum,
-        'turbidity':tur,
+      final parsedData = {
+        'device': deviceId,
+        'temperature': data['temperature']?.toString() ?? '--',
+        'humidity': data['humidity']?.toString() ?? '--',
+        'turbidity': data['turbidity']?.toString() ?? '--',
+        'timestamp': DateTime.now().toString(), // Add timestamp here
       };
 
-      dprint('🌡️ $deviceId → Temp: $temp °C | Hum: $hum % | Turb: $tur');
+      devices[deviceId] = parsedData; // Updates the dashboard view
+
+      // ONLY add to logBuffer if the service-level flag is true
+      if (isLogging.value) {
+        logBuffer.add(parsedData);
+        dprint('📝 Logged data for $deviceId');
+      }
     } catch (e) {
-      dprint('⚠️ JSON parse error (data): $e');
+      dprint('⚠️ Error: $e');
     }
   }
 

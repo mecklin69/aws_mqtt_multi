@@ -65,29 +65,33 @@ class ConnectedDevicesLocation extends StatelessWidget {
               );
             }
 
-            // Responsive Layout: Column for mobile, Wrap for desktop
             return Responsive.isMobile(context)
                 ? Column(
-              children: deviceEntries
-                  .map((entry) => _buildDeviceCard(
-                entry.key,
-                entry.value,
-                aws.deviceStatus[entry.key] ?? 'unknown',
-              ))
-                  .toList(),
+              children: deviceEntries.map((entry) {
+                // Convert Map<String, dynamic> to Map<String, String> here
+                final stringData = entry.value.map((k, v) => MapEntry(k, v.toString()));
+
+                return _buildDeviceCard(
+                  entry.key,
+                  stringData,
+                  aws.deviceStatus[entry.key] ?? 'unknown',
+                );
+              }).toList(),
             )
                 : Wrap(
               spacing: 16,
               runSpacing: 16,
-              children: deviceEntries
-                  .map((entry) => _buildDeviceCard(
-                entry.key,
-                entry.value,
-                aws.deviceStatus[entry.key] ?? 'unknown',
-                width:
-                MediaQuery.of(context).size.width * 0.42, // two per row
-              ))
-                  .toList(),
+              children: deviceEntries.map((entry) {
+                // Convert Map<String, dynamic> to Map<String, String> here
+                final stringData = entry.value.map((k, v) => MapEntry(k, v.toString()));
+
+                return _buildDeviceCard(
+                  entry.key,
+                  stringData,
+                  aws.deviceStatus[entry.key] ?? 'unknown',
+                  width: MediaQuery.of(context).size.width * 0.42,
+                );
+              }).toList(),
             );
           }),
         ],
