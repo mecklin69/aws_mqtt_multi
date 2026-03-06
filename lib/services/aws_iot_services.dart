@@ -170,7 +170,7 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
         'turbidity':tur,
       };
 
-      dprint('🌡️ $deviceId → Temp: $temp °C | Hum: $hum % | Turb: $tur NTU');
+      dprint('🌡️ $deviceId → Temp: $temp °C | Hum: $hum % | Turb: $tur');
     } catch (e) {
       dprint('⚠️ JSON parse error (data): $e');
     }
@@ -240,12 +240,7 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
   // ------------------------------------------------------------
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
-      dprint('📴 App in background → disconnecting MQTT...');
-      disconnect();
-    } else if (state == AppLifecycleState.resumed) {
+   if (state == AppLifecycleState.resumed) {
       dprint('🔁 App resumed → checking MQTT connection...');
       await Future.delayed(const Duration(seconds: 1));
       await reconnectIfNeeded();

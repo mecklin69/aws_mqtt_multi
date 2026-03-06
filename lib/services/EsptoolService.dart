@@ -14,7 +14,7 @@ class EsptoolService {
     try {
       final directory = await getApplicationSupportDirectory();
       _localEsptoolPath = p.join(directory.path, 'esptool.exe');
-      _localFirmwarePath = p.join(directory.path, 'firmwarev1esp8266.bin');
+      _localFirmwarePath = p.join(directory.path, 'amazon_iot_working.ino.bin');
 
       // 1. Check if esptool.exe already exists
       if (!await File(_localEsptoolPath!).exists()) {
@@ -27,7 +27,7 @@ class EsptoolService {
       // 2. Always update the firmware.bin (in case you changed the asset)
       // but handle the error just in case it's locked too
       if (!await File(_localFirmwarePath!).exists()) {
-        ByteData firmwareData = await rootBundle.load('assets/amazon_iot_working/firmwarev1esp8266.bin');
+        ByteData firmwareData = await rootBundle.load('assets/amazon_iot_working/amazon_iot_working.ino.bin');
         await File(_localFirmwarePath!).writeAsBytes(firmwareData.buffer
             .asUint8List(firmwareData.offsetInBytes, firmwareData.lengthInBytes));
       }

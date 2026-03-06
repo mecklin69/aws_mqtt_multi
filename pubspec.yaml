@@ -77,7 +77,7 @@ flutter:
     - assets/flutter-certificate.pem.crt
     - assets/flutter-private.pem.key
     - assets/esptool.exe
-    - assets/amazon_iot_working/firmwarev1esp8266.bin
+    - assets/amazon_iot_working/amazon_iot_working.ino.bin
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

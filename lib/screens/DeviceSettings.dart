@@ -10,9 +10,12 @@ class FirmwareFlashPage extends StatefulWidget {
   State<FirmwareFlashPage> createState() => _FirmwareFlashPageState();
 }
 
-class _FirmwareFlashPageState extends State<FirmwareFlashPage> {
+class _FirmwareFlashPageState extends State<FirmwareFlashPage>
+    with AutomaticKeepAliveClientMixin {
   final EsptoolService _service = EsptoolService();
-
+// 2. Override wantKeepAlive to true
+  @override
+  bool get wantKeepAlive => true;
   double _progress = 0;
   bool _isBusy = false;
   String _statusMessage = "System Standby";
@@ -147,6 +150,7 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
       body: LayoutBuilder(

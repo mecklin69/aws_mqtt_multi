@@ -104,7 +104,7 @@ class SideMenu extends StatelessWidget {
                     // 2️⃣ End MQTT and clean up
                     if (Get.isRegistered<AwsIotService>()) {
                       final awsService = Get.find<AwsIotService>();
-                      awsService.disposeService();
+                      awsService.onClose();
                     }
 
                     // 3️⃣ Navigate back to Login

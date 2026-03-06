@@ -1,5 +1,3 @@
-import 'package:Elevate/screens/DeviceSettings.dart';
-import 'package:Elevate/widgets/dashboard/Alarms.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart' as app_colors;
@@ -7,6 +5,11 @@ import '../responsive/responsive_layout.dart';
 import '../widgets/side_menu/side_menu.dart';
 import '../widgets/dashboard/main_content.dart';
 import '../widgets/dashboard/connected_devices_location.dart';
+import '../widgets/dashboard/Alarms.dart';
+import 'DataBucketPage.dart';
+import 'DeviceSettings.dart';
+// Ensure this import points to your FirmwareFlashPage file
+// import 'package:Elevate/screens/FirmwareFlashPage.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -18,19 +21,26 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int selectedIndex = 0;
 
-  // You can replace these with more detailed pages later.
-  final List<Widget> pages = const [
-    MainContent(),
-    ConnectedDevicesLocation(),
-    Center(child: Text('Dashboards Page')),
-    Center(child: Text('Data Buckets Page')),
-    Center(child: Text('Endpoints Page')),
- AlarmsPage(),
-    Center(child: Text('Access Tokens Page')),
-    Center(child: Text('Assets Page')),
-    FirmwareFlashPage(),
+  // 1. Declare the list here
+  late List<Widget> _pages;
 
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // 2. Initialize pages ONCE. These instances will now live
+    // for the entire lifetime of the DashboardScreen.
+    _pages = [
+      const MainContent(),
+      const ConnectedDevicesLocation(),
+      const Center(child: Text('Dashboards Page')),
+      const DataBucketPage(),
+      const Center(child: Text('Endpoints Page')),
+      const AlarmsPage(),
+      const Center(child: Text('Access Tokens Page')),
+      const Center(child: Text('Assets Page')),
+      const FirmwareFlashPage(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,9 +79,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 },
               ),
             Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: pages[selectedIndex],
+              child: IndexedStack(
+                index: selectedIndex,
+                children: _pages, // Use the persisted list
               ),
             ),
           ],
