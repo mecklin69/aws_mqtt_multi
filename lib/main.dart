@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:Elevate/services/amplify_service.dart';
+import 'package:Elevate/services/endpoints.dart';
 import 'package:Elevate/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-// import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart'; // ✅ Add this
@@ -53,7 +53,9 @@ if (Platform.isAndroid) {
 
   // ✅ Initialize AWS IoT service before app runs
   final AwsIotService awsService = Get.put(AwsIotService());
-  await awsService.connect();
+
+    await awsService.connect();
+
 
   // ✅ Determine login state before app starts
   final bool isUserLoggedIn = StorageService.isLoggedIn();

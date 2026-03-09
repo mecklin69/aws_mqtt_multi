@@ -2,15 +2,57 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <EEPROM.h>
 
 // ========== WiFi Credentials ==========
 const char* ssid = "Priyanshu";
 const char* password = "12345678";
 
+// ========== EEPROM Configuration ==========
+struct Config {
+  char did[20];
+  char loc[20];
+  char bid[20];
+  char fid[20];
+} config;
+
 // ========== AWS IoT Core Details ==========
-const char* mqtt_server = "a1uik643utyg4s-ats.iot.ap-south-1.amazonaws.com";  // <-- Change this
+const char* mqtt_server = "a1uik643utyg4s-ats.iot.ap-south-1.amazonaws.com";
 const int mqtt_port = 8883;
-const char* thingName = "Sensor 1 UK07";
+const char* thingName = "Elevate IoT";
+
+// ========== Serial Command Handler ==========
+void handleSerialCommand() {
+  if (Serial.available() > 0) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+
+    if (cmd.startsWith("SET_")) {
+      int split = cmd.indexOf(':');
+      if (split > 0) {
+        String key = cmd.substring(0, split);
+        String val = cmd.substring(split + 1);
+        
+        EEPROM.get(0, config);
+        if (key == "SET_DID") val.toCharArray(config.did, 20);
+        else if (key == "SET_LOC") val.toCharArray(config.loc, 20);
+        else if (key == "SET_BID") val.toCharArray(config.bid, 20);
+        else if (key == "SET_FID") val.toCharArray(config.fid, 20);
+        
+        EEPROM.put(0, config);
+        EEPROM.commit();
+        Serial.println("OK");
+      }
+    } 
+    else if (cmd.startsWith("GET_")) {
+      EEPROM.get(0, config);
+      if (cmd == "GET_DID") Serial.println(config.did);
+      else if (cmd == "GET_LOC") Serial.println(config.loc);
+      else if (cmd == "GET_BID") Serial.println(config.bid);
+      else if (cmd == "GET_FID") Serial.println(config.fid);
+    }
+  }
+}
 
 // ========== AWS Certificates ==========
 static const char ca_cert[] PROGMEM = R"EOF(
@@ -90,9 +132,6 @@ vlWsuPrGfneDLmQSxGNGSnwIZpE5RmG6vZCuegbJvRF5mzDvk97QpA==
 
 )KEY";
 
-// ========== MQTT Setup ==========
-// WiFiClientSecure wifiClient;
-// PubSubClient client(wifiClient);
 BearSSL::X509List cert(ca_cert);
 BearSSL::X509List client_crt(client_cert);
 BearSSL::PrivateKey key(priv_key);
@@ -103,127 +142,61 @@ void syncTime() {
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   Serial.print("Syncing NTP time");
   time_t now = time(nullptr);
-  while (now < 8 * 3600 * 2) {   // wait until >1970
-    delay(500);
-    Serial.print(".");
-    now = time(nullptr);
-  }
-  Serial.println();
-  Serial.printf("✅ Time synced: %s", ctime(&now));
+  while (now < 8 * 3600 * 2) { delay(500); Serial.print("."); now = time(nullptr); }
+  Serial.println("\n✅ Time synced.");
 }
-// ========== Helper Functions (Updated for Multi-Device MQTT) ==========
+
 bool connectAWS() {
-  Serial.print("🔌 Connecting to AWS IoT...");
-
-  int retries = 0;
-
-  // Create device-specific topics dynamically
-  String statusTopic = "esp8266/" + String(thingName) + "/status";
+  String statusTopic = "asus/" + String(thingName) + "/status";
   String willPayload = "{\"device\":\"" + String(thingName) + "\",\"status\":\"disconnected\"}";
-
-  while (!client.connected() && retries < 10) {
-    if (client.connect(
-          thingName,                   // Unique client ID
-          NULL, NULL,                  // Username & Password (not used)
-          statusTopic.c_str(),         // LWT topic (device-specific)
-          0,                           // QoS 0
-          false,                       // Retain = false
-          willPayload.c_str()          // LWT payload
-        ))
-    {
-      Serial.println("\n✅ Connected to AWS IoT!");
-
-      // Subscribe to all ESP topics using wildcards
-      client.subscribe("esp8266/+/data");
-      client.subscribe("esp8266/+/status");
-
-      // Publish “connected” status for this device
-      publishStatus("connected");
-      return true;
-    }
-    else {
-      Serial.print(".");
-      Serial.print(" state="); Serial.println(client.state());
-      Serial.print(" sslErr="); Serial.println(wifiClient.getLastSSLError());
-      delay(2000);
-      retries++;
-    }
+  if (client.connect(thingName, NULL, NULL, statusTopic.c_str(), 0, false, willPayload.c_str())) {
+    client.subscribe("asus/+/data");
+    client.subscribe("asus/+/status");
+    publishStatus("connected");
+    return true;
   }
-
-  Serial.println("\n❌ Failed to connect to AWS IoT after 10 retries.");
   return false;
 }
 
-
-/// --- Publish Sensor Data (Temperature & Humidity) ---
 void publishData() {
-  // Create dynamic topic for this device
-  String dataTopic = "esp8266/" + String(thingName) + "/data";
-
+  String dataTopic = "asus/" + String(thingName) + "/data";
   StaticJsonDocument<200> doc;
   doc["device"] = thingName;
-  doc["temperature"] = random(25, 35);  // Replace with your real sensor
-  doc["humidity"] = random(50, 70);    
-  doc["turbidity"]=random(0,10); // Replace with your real sensor
+  doc["temperature"] = random(25, 35);
+  doc["humidity"] = random(50, 70);
+  doc["turbidity"] = random(0, 10);
   doc["timestamp"] = millis();
-
   char payload[256];
   serializeJson(doc, payload);
-
   client.publish(dataTopic.c_str(), payload);
-  Serial.print("📤 Data published → ");
-  Serial.println(dataTopic);
-  Serial.println(payload);
 }
 
-
-/// --- Publish Connection Status (connected / disconnected) ---
 void publishStatus(const char* state) {
-  // Create dynamic status topic for this device
-  String statusTopic = "esp8266/" + String(thingName) + "/status";
-
+  String statusTopic = "asus/" + String(thingName) + "/status";
   StaticJsonDocument<100> statusDoc;
   statusDoc["device"] = thingName;
   statusDoc["status"] = state;
-
   char statusPayload[128];
   serializeJson(statusDoc, statusPayload);
-
   client.publish(statusTopic.c_str(), statusPayload);
-  Serial.print("📡 Status published → ");
-  Serial.println(statusTopic);
-  Serial.println(statusPayload);
 }
 
-
-// ========== Setup ==========
 void setup() {
   Serial.begin(9600);
+  EEPROM.begin(512);
   WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\n✅ WiFi Connected!");
-syncTime();
-  // Attach certificates (BearSSL version)
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  syncTime();
   wifiClient.setTrustAnchors(&cert);
   wifiClient.setClientRSACert(&client_crt, &key);
-
   client.setServer(mqtt_server, mqtt_port);
   connectAWS();
 }
 
-// ========== Loop ==========
 void loop() {
-  if (!client.connected()) {
-    publishStatus("disconnected");
-    connectAWS();
-  }
+  handleSerialCommand();
+  if (!client.connected()) connectAWS();
   client.loop();
-
   publishData();
-  delay(10000);  // Send data every 5s
+  delay(10000);
 }

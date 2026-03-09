@@ -1,6 +1,7 @@
 // aws_iot_service.dart
 import 'dart:convert';
 import 'dart:io';
+import 'package:Elevate/services/endpoints.dart';
 import 'package:get/get.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
@@ -11,11 +12,13 @@ import 'package:flutter/widgets.dart';
 import 'notification_service.dart'; // ✅ for WidgetsBindingObserver
 
 class AwsIotService extends GetxService with WidgetsBindingObserver {
+
+
   final String awsEndpoint = 'a1uik643utyg4s-ats.iot.ap-south-1.amazonaws.com';
   final String thingName = 'esp8266_mqtt';
-
-  final String dataTopicWildcard = 'esp8266/+/data';
-  final String statusTopicWildcard = 'esp8266/+/status';
+  var topicName = 'default/topic'.obs;
+  late final String dataTopicWildcard = '$topicName/+/data';
+  late final String statusTopicWildcard = '$topicName/+/status';
 // ADD THESE:
   var isLogging = false.obs;
   var logBuffer = <Map<String, dynamic>>[].obs;
@@ -45,9 +48,18 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
   @override
   void onInit() {
     super.onInit();
+    ever(topicName, (_) => _reconnectWithNewTopic());
     WidgetsBinding.instance.addObserver(this);
   }
-
+  Future<void> _reconnectWithNewTopic() async {
+    debugPrint('Topic changed to ${topicName.value}, reconnecting...');
+    if (isConnected.value) {
+      // Unsubscribe from old topics if necessary, then disconnect
+      client.disconnect();
+    }
+    // Re-run the connection flow
+    await connect();
+  }
   // ------------------------------------------------------------
   // 🚀 Connect to AWS IoT
   // ------------------------------------------------------------
@@ -151,10 +163,12 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
     });
   }
 
+  // Ensure _subscribeToTopics() uses the latest topicName.value
   void _subscribeToTopics() {
-    client.subscribe(dataTopicWildcard, MqttQos.atMostOnce);
-    client.subscribe(statusTopicWildcard, MqttQos.atMostOnce);
-    dprint('📡 Subscribed to $dataTopicWildcard and $statusTopicWildcard');
+    final dataTopic = '${topicName.value}/+/data';
+    final statusTopic = '${topicName.value}/+/status';
+    client.subscribe(dataTopic, MqttQos.atMostOnce);
+    client.subscribe(statusTopic, MqttQos.atMostOnce);
   }
 
   // Inside AwsIotService

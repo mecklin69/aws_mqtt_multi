@@ -1,3 +1,4 @@
+import 'package:Elevate/services/endpoints.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart' as app_colors;
@@ -34,7 +35,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const ConnectedDevicesLocation(),
       const Center(child: Text('Dashboards Page')),
       const DataBucketPage(),
-      const Center(child: Text('Endpoints Page')),
+      EndpointsPage(),
       const AlarmsPage(),
       const Center(child: Text('Access Tokens Page')),
       const Center(child: Text('Assets Page')),
