@@ -50,6 +50,7 @@ dependencies:
   csv: ^6.0.0
   share_plus: ^12.0.1
   file_picker: ^10.3.10
+  flutter_libserialport: ^0.6.0
 
 
 dev_dependencies:
@@ -80,7 +81,7 @@ flutter:
     - assets/flutter-certificate.pem.crt
     - assets/flutter-private.pem.key
     - assets/esptool.exe
-    - assets/amazon_iot_working/amazon_iot_working.ino.bin
+    - assets/firmware.ino.bin
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

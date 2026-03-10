@@ -24,15 +24,51 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
 
   String _currentVersion = "v1.2.0";
   final String _latestVersion = "v1.5.8 (Available)";
+  Map<String, String> _deviceConfig = {
 
-  final Map<String, String> _deviceConfig = {
-    "Device ID": "IOT-SNSR-G2-9910",
-    "MAC Address": "48:3F:DA:56:22:90",
-    "Uptime": "14 days, 2 hours",
-    "Signal Strength": "-67 dBm",
-    "Power Source": "Battery (88%)",
+    "Device ID": "Fetching...",
+
+    "Geo-Location": "Fetching...",
+
+    "Batch ID": "Fetching...",
+
+    "Firmware Version": "Fetching...",
+
   };
 
+  Future<void> _syncDeviceConfig() async {
+    if (_selectedPort == null) return;
+
+    setState(() => _statusMessage = "Syncing with hardware...");
+
+    // Define the keys and commands in a map for easy iteration
+    final Map<String, String> commands = {
+      "Device ID": "GET_DID",
+      "Geo-Location": "GET_LOC",
+      "Batch ID": "GET_BID",
+      "Firmware Version": "GET_FID",
+    };
+
+    final Map<String, String> newConfig = {};
+
+
+    try {
+      for (var entry in commands.entries) {
+        // Use your service to get the data
+        final result = await _service.readSerialCommand(_selectedPort!, entry.value);
+        newConfig[entry.key] = result ?? "Error";
+        // 2. 50ms delay between commands
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+
+      setState(() {
+        _deviceConfig = newConfig;
+        _statusMessage = "Configuration Synced";
+      });
+    } catch (e) {
+      setState(() => _statusMessage = "Sync Failed: $e");
+    }
+  }
   @override
   void initState() {
     super.initState();
@@ -47,6 +83,7 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
   // --- CLEAN LOGIC HANDLERS ---
 
   Future<void> _scanPorts() async {
+    _service.forceCloseAllPorts();
     setState(() {
       _isBusy = true;
       _statusMessage = "Scanning for hardware...";
@@ -234,7 +271,20 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
       ),
     );
   }
-
+  Widget _buildConfigList() {
+    return Column(
+      children: _deviceConfig.entries.map((e) => Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(e.key, style: const TextStyle(color: Colors.grey)),
+            Text(e.value, style: const TextStyle(fontWeight: FontWeight.normal)),
+          ],
+        ),
+      )).toList(),
+    );
+  }
   // --- REUSABLE SUB-WIDGETS ---
 
   Widget _buildHeader(bool isMobile) {
@@ -304,26 +354,6 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     );
   }
 
-  Widget _buildConfigList() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("HARDWARE PROFILE", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-        const SizedBox(height: 16),
-        ...['Device ID', 'MAC Address', 'Signal Strength'].map((key) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(key, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
-              Text(_deviceConfig[key]!, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF334155), fontSize: 13)),
-            ],
-          ),
-        )),
-      ],
-    );
-  }
-
   Widget _buildPortCard() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -348,11 +378,11 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
       ),
     );
   }
-
   Widget _buildSideButtons() {
     return Column(
       children: [
-        _sideButton("READ CONFIGURATION", Icons.settings_input_component, () => _service.readDeviceMode(_selectedPort ?? "")),
+        // Change this line to point to _syncDeviceConfig()
+        _sideButton("READ CONFIGURATION", Icons.settings_input_component, _syncDeviceConfig),
         const SizedBox(height: 12),
         _sideButton("FACTORY ERASE", Icons.delete_sweep_outlined, _handleErase, isDestructive: true),
       ],

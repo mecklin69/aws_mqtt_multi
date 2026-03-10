@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-
+import 'package:flutter_libserialport/flutter_libserialport.dart';
 class EsptoolService {
+  bool _isPortBusy = false;
   String? _localEsptoolPath;
   String? _localFirmwarePath;
 
@@ -14,7 +16,7 @@ class EsptoolService {
     try {
       final directory = await getApplicationSupportDirectory();
       _localEsptoolPath = p.join(directory.path, 'esptool.exe');
-      _localFirmwarePath = p.join(directory.path, 'amazon_iot_working.ino.bin');
+      _localFirmwarePath = p.join(directory.path, 'firmware.ino.bin');
 
       // 1. Check if esptool.exe already exists
       if (!await File(_localEsptoolPath!).exists()) {
@@ -27,7 +29,7 @@ class EsptoolService {
       // 2. Always update the firmware.bin (in case you changed the asset)
       // but handle the error just in case it's locked too
       if (!await File(_localFirmwarePath!).exists()) {
-        ByteData firmwareData = await rootBundle.load('assets/amazon_iot_working/amazon_iot_working.ino.bin');
+        ByteData firmwareData = await rootBundle.load('assets/firmware.ino.bin');
         await File(_localFirmwarePath!).writeAsBytes(firmwareData.buffer
             .asUint8List(firmwareData.offsetInBytes, firmwareData.lengthInBytes));
       }
@@ -59,7 +61,87 @@ class EsptoolService {
     await process.exitCode;
   }
 
+  // Add this to your EsptoolService class
+  void forceCloseAllPorts() {
+    final ports = SerialPort.availablePorts;
+    for (final portName in ports) {
+      final port = SerialPort(portName);
+      if (port.isOpen) {
+        debugPrint("Force closing dangling port: $portName");
+        port.close();
+        port.dispose();
+      }
+    }
+  }
+// Inside your EsptoolService class:
+  Future<String?> readSerialCommand(String portName, String command) async {
+    // 1. Prevent concurrent access
+    if (_isPortBusy) {
+      debugPrint("Read attempt blocked: Port is busy.");
+      return "Error: Port in use";
+    }
+
+    _isPortBusy = true;
+
+    // 2. Declare variables outside the try-catch block for accessibility
+    SerialPort? port;
+    SerialPortReader? reader;
+    String response = "";
+
+    try {
+      port = SerialPort(portName);
+
+      // ADD THIS BLOCK: Force specific config before opening
+      final config = SerialPortConfig();
+      config.baudRate = 115200;
+      config.bits = 8;
+      config.parity = SerialPortParity.none;
+      config.stopBits = 1;
+      config.setFlowControl(SerialPortFlowControl.none);
+      port.config = config;
+
+      debugPrint("Attempting to open: ${port.name}");
+      if (!port.openReadWrite()) {
+        final err = SerialPort.lastError;
+        throw Exception("OS Error $err: ${err?.message}");
+      }
+      // Initialize reader
+      reader = SerialPortReader(port);
+
+      // Send the command
+      port.write(Uint8List.fromList('$command\n'.codeUnits));
+
+      // 3. Read the response with a safety timeout
+      // (Crucial: prevents the app from hanging if the device doesn't respond)
+      await for (final data in reader.stream.timeout(
+        const Duration(seconds: 2),
+        onTimeout: (sink) => sink.close(),
+      )) {
+        response = String.fromCharCodes(data).trim();
+        if (response.isNotEmpty) break;
+      }
+
+      return response.isEmpty ? "No response" : response;
+
+    } catch (e) {
+      debugPrint("Serial Error: $e");
+      return "Error: $e";
+    } finally {
+      if (reader != null) reader.close();
+      if (port != null) {
+        port.close();
+        port.dispose();
+      }
+      // Force the OS to catch up
+      await Future.delayed(const Duration(milliseconds: 300));
+      _isPortBusy = false;
+    }
+  }
   /// WRITE FLASH (With Real Percentage Logic)
+
+  //
+  //     reader.close();
+  //     port.close();
   Future<void> writeFlash({
     required String port,
     required Function(String) onStatus,

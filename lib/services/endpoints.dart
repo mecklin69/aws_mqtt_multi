@@ -14,6 +14,7 @@ class EndpointController extends GetxController {
       // Updating this value automatically triggers 'ever' in the service
       _awsIotService.topicName.value = topicController.text;
       isTopicSet.value = true;
+
       Get.snackbar("Success", "Topic set to: ${topicController.text}");
     } else {
       Get.snackbar("Error", "Please enter a valid topic name");

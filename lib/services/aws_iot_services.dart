@@ -57,6 +57,9 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
       // Unsubscribe from old topics if necessary, then disconnect
       client.disconnect();
     }
+
+    devices.clear();
+    deviceStatus.clear();
     // Re-run the connection flow
     await connect();
   }
