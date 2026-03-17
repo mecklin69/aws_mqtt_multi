@@ -51,7 +51,7 @@ class EndpointsPage extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Obx(() => controller.isTopicSet.value
-                ? Text("Active Topic: ${controller}",
+                ? Text("Active Topic: $controller",
                 style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green))
                 : const Text("No topic configured")),
           ],

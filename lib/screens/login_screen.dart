@@ -3,10 +3,9 @@ import 'dart:convert';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../services/amplify_service.dart';
 import 'dashboard_screen.dart';
 import '../services/storage_service.dart';
-import '../services/aws_iot_services.dart'; // ✅ Import your AWS IoT service
+// ✅ Import your AWS IoT service
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});

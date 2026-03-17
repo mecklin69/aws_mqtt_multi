@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter_libserialport/flutter_libserialport.dart';
@@ -18,7 +17,7 @@ class EsptoolService {
       _localEsptoolPath = p.join(directory.path, 'esptool.exe');
       _localFirmwarePath = p.join(directory.path, 'firmware.ino.bin');
 
-      // 1. Check if esptool.exe already exists
+      // 1. Keep the check for esptool.exe (It never changes)
       if (!await File(_localEsptoolPath!).exists()) {
         ByteData esptoolData = await rootBundle.load('assets/esptool.exe');
         await File(_localEsptoolPath!).writeAsBytes(esptoolData.buffer
@@ -26,19 +25,16 @@ class EsptoolService {
         debugPrint("esptool.exe extracted.");
       }
 
-      // 2. Always update the firmware.bin (in case you changed the asset)
-      // but handle the error just in case it's locked too
-      if (!await File(_localFirmwarePath!).exists()) {
-        ByteData firmwareData = await rootBundle.load('assets/firmware.ino.bin');
-        await File(_localFirmwarePath!).writeAsBytes(firmwareData.buffer
-            .asUint8List(firmwareData.offsetInBytes, firmwareData.lengthInBytes));
-      }
+      // 2. REMOVE THE IF CHECK: Always overwrite the firmware
+      // This ensures your latest binary is always used
+      ByteData firmwareData = await rootBundle.load('assets/firmware.ino.bin');
+      await File(_localFirmwarePath!).writeAsBytes(firmwareData.buffer
+          .asUint8List(firmwareData.offsetInBytes, firmwareData.lengthInBytes));
 
+      debugPrint("Firmware updated in local storage.");
       debugPrint("Assets ready at: ${directory.path}");
     } catch (e) {
-      // If the error is "Process cannot access the file", we can ignore it
-      // because it means the file is already there and ready to use!
-      debugPrint("Asset check: File likely already in use/exists.");
+      debugPrint("Asset error: $e");
     }
   }
 
@@ -156,7 +152,7 @@ class EsptoolService {
     final process = await Process.start(_localEsptoolPath!, [
       '--chip', 'esp8266',
       '--port', port,
-      '--baud', '115200',
+      '--baud', '9600',
       'write_flash', '-fm', 'dio', '0x00000', _localFirmwarePath!
     ]);
 

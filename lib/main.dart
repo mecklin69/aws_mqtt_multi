@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:Elevate/services/amplify_service.dart';
-import 'package:Elevate/services/endpoints.dart';
 import 'package:Elevate/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';

@@ -53,6 +53,9 @@ dependencies:
   flutter_libserialport: ^0.6.0
 
 
+  path: any
+  geolocator: ^14.0.2
+  geocoding: ^4.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

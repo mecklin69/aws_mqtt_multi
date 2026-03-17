@@ -62,7 +62,7 @@ class _AlarmsPageState extends State<AlarmsPage> {
             scale: 0.8,
             child: CupertinoSwitch(
               value: _alarmsEnabled,
-              activeColor: const Color(0xFF1F8EFE),
+              activeTrackColor: const Color(0xFF1F8EFE),
               onChanged: (val) => setState(() => _alarmsEnabled = val),
             ),
           ),

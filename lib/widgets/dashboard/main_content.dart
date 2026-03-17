@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:Elevate/widgets/dashboard/LocationLineChart.dart';
 import 'connected_devices_location.dart';
 import 'header.dart';
 import 'statistics_section.dart';

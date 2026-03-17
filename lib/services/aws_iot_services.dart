@@ -1,7 +1,6 @@
 // aws_iot_service.dart
 import 'dart:convert';
 import 'dart:io';
-import 'package:Elevate/services/endpoints.dart';
 import 'package:get/get.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
