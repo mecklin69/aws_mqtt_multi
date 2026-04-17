@@ -228,7 +228,34 @@ class AwsIotService extends GetxService with WidgetsBindingObserver {
       dprint('⚠️ JSON parse error (status): $e');
     }
   }
+// ------------------------------------------------------------
+  // 🔄 Full Restart Logic
+  // ------------------------------------------------------------
+  Future<void> restartService() async {
+    dprint('🔄 Restarting AWS IoT Service and re-initializing...');
 
+    try {
+      // 1. Disconnect existing client
+      client.disconnect();
+    } catch (e) {
+      dprint('Note: Client already disconnected or error during closure: $e');
+    }
+
+    // 2. Reset all reactive states to initial values
+    isConnected.value = false;
+    connectedDeviceCount.value = 0;
+    devices.clear();
+    deviceStatus.clear();
+    logBuffer.clear();
+
+    // 3. Brief delay to ensure cleanup is processed by the event loop
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // 4. Re-run the connection and certificate loading flow
+    await connect();
+
+    dprint('✅ Service re-initialized');
+  }
   void disconnect() {
     try {
       client.disconnect();

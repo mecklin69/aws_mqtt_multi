@@ -1,188 +1,256 @@
+
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter_libserialport/flutter_libserialport.dart';
+
 class EsptoolService {
-  bool _isPortBusy = false;
   String? _localEsptoolPath;
   String? _localFirmwarePath;
 
-  /// Initializes local paths by copying assets to the application document directory
+  SerialPort? _port;
+  String? _openPortName;
+  StreamSubscription<Uint8List>? _subscription;
+  final List<int> _rxBuffer = [];
+  bool _isPortBusy = false;
+
+  // ─── Assets ──────────────────────────────────────────────────────────────
+
   Future<void> initAssets() async {
     try {
       final directory = await getApplicationSupportDirectory();
       _localEsptoolPath = p.join(directory.path, 'esptool.exe');
       _localFirmwarePath = p.join(directory.path, 'firmware.ino.bin');
 
-      // 1. Keep the check for esptool.exe (It never changes)
       if (!await File(_localEsptoolPath!).exists()) {
         ByteData esptoolData = await rootBundle.load('assets/esptool.exe');
         await File(_localEsptoolPath!).writeAsBytes(esptoolData.buffer
             .asUint8List(esptoolData.offsetInBytes, esptoolData.lengthInBytes));
-        debugPrint("esptool.exe extracted.");
       }
 
-      // 2. REMOVE THE IF CHECK: Always overwrite the firmware
-      // This ensures your latest binary is always used
       ByteData firmwareData = await rootBundle.load('assets/firmware.ino.bin');
       await File(_localFirmwarePath!).writeAsBytes(firmwareData.buffer
           .asUint8List(firmwareData.offsetInBytes, firmwareData.lengthInBytes));
-
-      debugPrint("Firmware updated in local storage.");
-      debugPrint("Assets ready at: ${directory.path}");
     } catch (e) {
       debugPrint("Asset error: $e");
     }
   }
 
-  /// ERASE FLASH
+  // ─── Port Management ─────────────────────────────────────────────────────
+
+  Future<bool> _ensurePortOpen(String portName) async {
+    if (_port != null && _openPortName == portName && _port!.isOpen) {
+      debugPrint("[PORT] Already open: $portName");
+      return true;
+    }
+
+    _closePort();
+
+    try {
+      debugPrint("[PORT] Opening $portName...");
+      final port = SerialPort(portName);
+
+      final config = SerialPortConfig()
+        ..baudRate = 115200
+        ..bits = 8
+        ..stopBits = 1
+        ..parity = SerialPortParity.none
+        ..setFlowControl(SerialPortFlowControl.none);
+
+      port.config = config;
+
+      if (!port.openReadWrite()) {
+        debugPrint("[PORT] OPEN FAILED: ${SerialPort.lastError}");
+        return false;
+      }
+
+      _port = port;
+      _openPortName = portName;
+      _rxBuffer.clear();
+
+      _subscription = SerialPortReader(port).stream.listen(
+            (Uint8List bytes) {
+          final hex = bytes.map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}').join(' ');
+          final ascii = String.fromCharCodes(bytes.map((b) => (b >= 32 && b < 127) ? b : 46));
+          debugPrint("[RX RAW] ${bytes.length} bytes | HEX: $hex | ASCII: '$ascii'");
+          _rxBuffer.addAll(bytes);
+        },
+        onError: (e) => debugPrint("[RX ERROR] $e"),
+        onDone: () => debugPrint("[RX] Stream closed"),
+      );
+
+      debugPrint("[PORT] Waiting 2s for ESP8266 boot...");
+      await Future.delayed(const Duration(milliseconds: 2000));
+      debugPrint("[PORT] Ready.");
+      return true;
+
+    } catch (e) {
+      debugPrint("[PORT] Exception: $e");
+      return false;
+    }
+  }
+// ─── Public Port Control (called from UI) ────────────────────────────────
+
+  Future<bool> openPort(String portName) async {
+    return await _ensurePortOpen(portName);
+  }
+
+  void closePort(String portName) {
+    if (_openPortName == portName) {
+      _closePort();
+    }
+  }
+
+  bool isPortOpen(String portName) {
+    return _port != null && _openPortName == portName && (_port?.isOpen ?? false);
+  }
+
+  void _closePort() {
+    _subscription?.cancel();
+    _subscription = null;
+    if (_port != null) {
+      if (_port!.isOpen) _port!.close();
+      _port!.dispose();
+      _port = null;
+    }
+    _openPortName = null;
+    _rxBuffer.clear();
+    debugPrint("[PORT] Closed.");
+  }
+
+  void forceCloseAllPorts() {
+    _closePort();
+    _isPortBusy = false;
+  }
+
+  // ─── Core Command ─────────────────────────────────────────────────────────
+
+  Future<String?> readSerialCommand(String portName, String command) async {
+    if (_isPortBusy) {
+      debugPrint("[CMD] SKIPPED (busy): $command");
+      return "Error: Port Busy";
+    }
+    _isPortBusy = true;
+
+    try {
+      if (!await _ensurePortOpen(portName)) {
+        return "Error: Cannot open port $portName";
+      }
+      // Flush stale bytes
+      if (_rxBuffer.isNotEmpty) {
+        debugPrint("[CMD] Flushing ${_rxBuffer.length} stale bytes.");
+        _rxBuffer.clear();
+      }
+
+      // ── TX ────────────────────────────────────────────────────────────────
+      final cmdBytes = Uint8List.fromList('$command\n'.codeUnits);
+    final written = _port!.write(cmdBytes);
+    debugPrint("[TX] '$command\\n' → $written / ${cmdBytes.length} bytes written");
+
+    if (written != cmdBytes.length) {
+    debugPrint("[TX] WARNING: partial write ($written of ${cmdBytes.length})");
+    }
+
+    // ── WAIT FOR LINE ─────────────────────────────────────────────────────
+    debugPrint("[CMD] Waiting for response to '$command'...");
+    final String? response = await _waitForLine(
+    timeout: const Duration(seconds: 5),
+    );
+
+    if (response == null) {
+    debugPrint(
+    "[CMD] TIMEOUT for '$command'. Buffer: ${_rxBuffer.length} bytes.");
+    if (_rxBuffer.isNotEmpty) {
+    final hex = _rxBuffer
+        .map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}')
+        .join(' ');
+    debugPrint("[CMD] Buffer at timeout HEX: $hex");
+    debugPrint(
+    "[CMD] Buffer ASCII: '${String.fromCharCodes(_rxBuffer.map((b) => (b >= 32 && b < 127) ? b : 46))}'");
+    } else {
+    debugPrint("[CMD] Buffer EMPTY → ESP sent NOTHING back.");
+    }
+    }
+
+    debugPrint("[CMD] '$command' → response: '$response'");
+    return response;
+    } catch (e) {
+    debugPrint("[CMD] Exception: $e");
+    _closePort();
+    return "Error: $e";
+    } finally {
+    await Future.delayed(const Duration(milliseconds: 200));
+    _isPortBusy = false;
+    }
+  }
+
+  Future<String?> _waitForLine({required Duration timeout}) async {
+    final deadline = DateTime.now().add(timeout);
+
+    while (DateTime.now().isBefore(deadline)) {
+      final newlineIdx = _rxBuffer.indexOf(0x0A); // '\n'
+
+      if (newlineIdx != -1) {
+        final lineBytes = _rxBuffer.sublist(0, newlineIdx);
+        _rxBuffer.removeRange(0, newlineIdx + 1);
+        final line =
+        String.fromCharCodes(lineBytes).replaceAll('\r', '').trim();
+        debugPrint("[LINE] Extracted: '$line'");
+        if (line.isNotEmpty) return line;
+        // Empty line (bare \r\n) — keep waiting for the real response
+      }
+
+      await Future.delayed(const Duration(milliseconds: 20));
+    }
+
+    return null; // Timed out
+  }
+
+  // ─── Flash / Erase ───────────────────────────────────────────────────────
+
   Future<void> eraseFlash({
     required String port,
     required Function(String) onStatus,
     required Function(double) onProgress,
   }) async {
+    forceCloseAllPorts();
     if (_localEsptoolPath == null) await initAssets();
-
-    onStatus("Initializing Erase...");
-    final process = await Process.start(_localEsptoolPath!, ['--port', port, 'erase_flash']);
-
+    final process =
+    await Process.start(_localEsptoolPath!, ['--port', port, 'erase_flash']);
     process.stdout.transform(utf8.decoder).listen((data) {
       if (data.contains("successfully")) onProgress(1.0);
       onStatus(data.trim());
     });
-
     await process.exitCode;
   }
 
-  // Add this to your EsptoolService class
-  void forceCloseAllPorts() {
-    final ports = SerialPort.availablePorts;
-    for (final portName in ports) {
-      final port = SerialPort(portName);
-      if (port.isOpen) {
-        debugPrint("Force closing dangling port: $portName");
-        port.close();
-        port.dispose();
-      }
-    }
-  }
-// Inside your EsptoolService class:
-  Future<String?> readSerialCommand(String portName, String command) async {
-    // 1. Prevent concurrent access
-    if (_isPortBusy) {
-      debugPrint("Read attempt blocked: Port is busy.");
-      return "Error: Port in use";
-    }
-
-    _isPortBusy = true;
-
-    // 2. Declare variables outside the try-catch block for accessibility
-    SerialPort? port;
-    SerialPortReader? reader;
-    String response = "";
-
-    try {
-      port = SerialPort(portName);
-
-      // ADD THIS BLOCK: Force specific config before opening
-      final config = SerialPortConfig();
-      config.baudRate = 115200;
-      config.bits = 8;
-      config.parity = SerialPortParity.none;
-      config.stopBits = 1;
-      config.setFlowControl(SerialPortFlowControl.none);
-      port.config = config;
-
-      debugPrint("Attempting to open: ${port.name}");
-      if (!port.openReadWrite()) {
-        final err = SerialPort.lastError;
-        throw Exception("OS Error $err: ${err?.message}");
-      }
-      // Initialize reader
-      reader = SerialPortReader(port);
-
-      // Send the command
-      port.write(Uint8List.fromList('$command\n'.codeUnits));
-
-      // 3. Read the response with a safety timeout
-      // (Crucial: prevents the app from hanging if the device doesn't respond)
-      await for (final data in reader.stream.timeout(
-        const Duration(seconds: 2),
-        onTimeout: (sink) => sink.close(),
-      )) {
-        response = String.fromCharCodes(data).trim();
-        if (response.isNotEmpty) break;
-      }
-
-      return response.isEmpty ? "No response" : response;
-
-    } catch (e) {
-      debugPrint("Serial Error: $e");
-      return "Error: $e";
-    } finally {
-      if (reader != null) reader.close();
-      if (port != null) {
-        port.close();
-        port.dispose();
-      }
-      // Force the OS to catch up
-      await Future.delayed(const Duration(milliseconds: 300));
-      _isPortBusy = false;
-    }
-  }
-  /// WRITE FLASH (With Real Percentage Logic)
-
-  //
-  //     reader.close();
-  //     port.close();
   Future<void> writeFlash({
     required String port,
     required Function(String) onStatus,
     required Function(double) onProgress,
   }) async {
+    forceCloseAllPorts();
     if (_localEsptoolPath == null) await initAssets();
-
-    onStatus("Connecting to ESP8266...");
-
-    // Command based on your working CLI:
-    // esptool.exe --chip esp8266 --port COM4 --baud 115200 write_flash -fm dio 0x00000 firmware.bin
     final process = await Process.start(_localEsptoolPath!, [
-      '--chip', 'esp8266',
-      '--port', port,
-      '--baud', '9600',
+      '--chip', 'esp8266', '--port', port, '--baud', '115200',
       'write_flash', '-fm', 'dio', '0x00000', _localFirmwarePath!
     ]);
-
     process.stdout.transform(utf8.decoder).listen((data) {
-      // REGEX: Looks for digits before a % sign (e.g. " 45%")
       final RegExp regExp = RegExp(r'(\d+)\s*%');
       final matches = regExp.allMatches(data);
-
       if (matches.isNotEmpty) {
         final String? percentageStr = matches.last.group(1);
         if (percentageStr != null) {
-          double val = double.parse(percentageStr) / 100.0;
-          onProgress(val); // Moves the UI Progress Bar
+          onProgress(double.parse(percentageStr) / 100.0);
         }
       }
       onStatus(data);
     });
-
     await process.exitCode;
   }
-
-  /// READ MODE (Windows mode command)
-  Future<String> readMode(String port) async {
-    final result = await Process.run('mode', [port]);
-    return result.stdout.toString();
-  }
-  Future<String> readDeviceMode(String port) async {
-    final result = await Process.run('mode', [port]);
-    return result.stdout.toString();
-  }
 }
-
-
