@@ -9,6 +9,7 @@ import '../widgets/dashboard/connected_devices_location.dart';
 import '../widgets/dashboard/Alarms.dart';
 import 'DataBucketPage.dart';
 import 'DeviceSettings.dart';
+import 'dart:io';
 // Ensure this import points to your FirmwareFlashPage file
 // import 'package:Elevate/screens/FirmwareFlashPage.dart';
 
@@ -39,7 +40,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const AlarmsPage(),
       const Center(child: Text('Access Tokens Page')),
       const Center(child: Text('Assets Page')),
-      const FirmwareFlashPage(),
+      if (Platform.isWindows)
+        const FirmwareFlashPage()
+      else
+        const _DesktopOnlyPlaceholder(),
     ];
   }
 
@@ -87,6 +91,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+class _DesktopOnlyPlaceholder extends StatelessWidget {
+  const _DesktopOnlyPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.desktop_windows_outlined,
+            size: 64,
+            color: Colors.blueGrey.shade300,
+          ),
+          const SizedBox(height: 20),
+          Text(
+            "Desktop Only",
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Colors.blueGrey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Firmware flashing and device configuration\nis only available on Windows Desktop.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.blueGrey.shade400,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.shade100),
+            ),
+            child: Text(
+              "Open this app on a Windows PC to access this feature.",
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.blue.shade700,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

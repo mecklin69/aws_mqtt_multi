@@ -10,8 +10,21 @@ import '../../services/aws_iot_services.dart';
 class DashboardHeader extends StatelessWidget {
   const DashboardHeader({super.key});
 
+  Future<void> _restartConnections() async {
+    Get.snackbar(
+      'System',
+      'Restarting connections...',
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 1),
+    );
+    final awsService = Get.find<AwsIotService>();
+    await awsService.restartService();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool isMobile = MediaQuery.of(context).size.width < 600;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -21,46 +34,55 @@ class DashboardHeader extends StatelessWidget {
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
 
-        // Action Button - Restart Connections
-        // Inside DashboardHeader build method...
-        OutlinedButton.icon(
-          onPressed: () async {
-            // Show a snackbar or loading indicator if desired
-            Get.snackbar(
-              'System',
-              'Restarting connections...',
-              snackPosition: SnackPosition.BOTTOM,
-              duration: const Duration(seconds: 1),
-            );
-
-            // Find the service and trigger the restart
-            final awsService = Get.find<AwsIotService>();
-            await awsService.restartService();
-          },
-          icon: const Icon(Icons.refresh, size: 18),
-          label: const Text('Restart Connections'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: app_colors.slateGrey,
-            side: const BorderSide(color: app_colors.slateGrey),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+        // Icon-only on mobile, full label on desktop
+        if (isMobile)
+          Tooltip(
+            message: 'Restart Connections',
+            child: OutlinedButton(
+              onPressed: _restartConnections,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: app_colors.slateGrey,
+                side: const BorderSide(color: app_colors.slateGrey),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.all(10),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Icon(Icons.refresh, size: 18),
+            ),
+          )
+        else
+          OutlinedButton.icon(
+            onPressed: _restartConnections,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Restart Connections'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: app_colors.slateGrey,
+              side: const BorderSide(color: app_colors.slateGrey),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
           ),
-        ),
 
-        // User Profile Section
+        // User Profile — hides username text on mobile
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(
               Icons.account_circle,
               color: app_colors.slateGrey,
               size: 28,
             ),
-            const SizedBox(width: 8),
-            Text(
-              StatisticsData.userName,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+            if (!isMobile) ...[
+              const SizedBox(width: 8),
+              Text(
+                StatisticsData.userName,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
             const SizedBox(width: 4),
             const Icon(Icons.arrow_drop_down, color: app_colors.slateGrey),
           ],

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../services/EsptoolService.dart';
@@ -24,6 +25,11 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
   String? _selectedPort;
   List<String> _availablePorts = [];
 
+  // ─── Firmware Source State ────────────────────────────────────────────────
+
+  bool _useCustomFirmware = false;
+  String? _customFirmwarePath;
+
   // ─── UI State ─────────────────────────────────────────────────────────────
 
   double _progress = 0;
@@ -46,12 +52,12 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
   // ─── Controllers ─────────────────────────────────────────────────────────
 
   final TextEditingController _deviceIdController = TextEditingController();
-  final TextEditingController _firmwareController = TextEditingController();
-  final TextEditingController _batchController = TextEditingController();
-  final TextEditingController _ssidController = TextEditingController();
-  final TextEditingController _passController = TextEditingController();
-  final TextEditingController _thingController = TextEditingController();
-  final TextEditingController _topicController = TextEditingController();
+  final TextEditingController _firmwareController  = TextEditingController();
+  final TextEditingController _batchController     = TextEditingController();
+  final TextEditingController _ssidController      = TextEditingController();
+  final TextEditingController _passController      = TextEditingController();
+  final TextEditingController _thingController     = TextEditingController();
+  final TextEditingController _topicController     = TextEditingController();
 
   late Future<LocationData> locationFuture;
 
@@ -90,7 +96,6 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
 
   Future<void> _scanPorts() async {
     _service.forceCloseAllPorts();
-
     setState(() {
       _isBusy = true;
       _statusMessage = "Scanning for hardware...";
@@ -98,36 +103,54 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
 
     try {
       List<String> found = [];
-
       if (Platform.isWindows) {
         final result = await Process.run(
           'reg',
           ['query', 'HKEY_LOCAL_MACHINE\\HARDWARE\\DEVICEMAP\\SERIALCOMM'],
         );
-
         if (result.exitCode == 0) {
           final RegExp regExp = RegExp(r'COM\d+');
           final matches = regExp.allMatches(result.stdout.toString());
           for (var match in matches) {
-            if (!found.contains(match.group(0))) {
-              found.add(match.group(0)!);
-            }
+            if (!found.contains(match.group(0))) found.add(match.group(0)!);
           }
         }
       }
-
       setState(() {
         _availablePorts = found;
-        _selectedPort = found.isNotEmpty ? found.first : null;
-        _statusMessage = found.isNotEmpty ? "Hardware Connected" : "No Device Detected";
-        _isBusy = false;
+        _selectedPort   = found.isNotEmpty ? found.first : null;
+        _statusMessage  = found.isNotEmpty ? "Hardware Connected" : "No Device Detected";
+        _isBusy         = false;
       });
     } catch (e) {
       setState(() {
         _statusMessage = "Scan Error";
-        _isBusy = false;
+        _isBusy        = false;
       });
     }
+  }
+
+  // ─── Firmware Picker ──────────────────────────────────────────────────────
+
+  Future<void> _pickFirmwareFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['bin'],
+      dialogTitle: 'Select Firmware (.bin)',
+    );
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        _customFirmwarePath = result.files.single.path;
+        _useCustomFirmware  = true;
+      });
+    }
+  }
+
+  void _clearCustomFirmware() {
+    setState(() {
+      _customFirmwarePath = null;
+      _useCustomFirmware  = false;
+    });
   }
 
   // ─── Port Open / Close ────────────────────────────────────────────────────
@@ -159,14 +182,27 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
       return;
     }
 
+    if (_useCustomFirmware && _customFirmwarePath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please select a .bin firmware file first."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() {
-      _isBusy = true;
-      _progress = 0;
-      _statusMessage = "Preparing Flash...";
+      _isBusy        = true;
+      _progress      = 0;
+      _statusMessage = _useCustomFirmware
+          ? "Preparing Custom Firmware..."
+          : "Preparing Flash...";
     });
 
     await _service.writeFlash(
       port: _selectedPort!,
+      firmwarePath: _useCustomFirmware ? _customFirmwarePath : null,
       onStatus: (msg) {
         if (msg.contains("Writing at")) {
           setState(() => _statusMessage = "Flashing Firmware...");
@@ -181,8 +217,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     setState(() {
       _isBusy = false;
       if (_progress >= 0.9) {
-        _currentVersion = "v1.5.8";
-        _statusMessage = "Update Successful";
+        _currentVersion = _useCustomFirmware ? "Custom" : "v1.5.8";
+        _statusMessage  = "Update Successful";
       } else {
         _statusMessage = "Flash Failed";
       }
@@ -191,15 +227,11 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
 
   Future<void> _handleErase() async {
     if (_selectedPort == null) return;
-
-    if (Platform.isAndroid) {
-      _showAndroidWarning();
-      return;
-    }
+    if (Platform.isAndroid) { _showAndroidWarning(); return; }
 
     setState(() {
-      _isBusy = true;
-      _progress = 0;
+      _isBusy        = true;
+      _progress      = 0;
       _statusMessage = "Wiping Device...";
     });
 
@@ -214,7 +246,7 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     );
 
     setState(() {
-      _isBusy = false;
+      _isBusy   = false;
       _progress = 1.0;
     });
   }
@@ -225,18 +257,18 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     if (_selectedPort == null || _isBusy) return;
 
     setState(() {
-      _isBusy = true;
+      _isBusy        = true;
       _statusMessage = "Syncing Atria® Configuration...";
     });
 
     final Map<String, String> commands = {
-      "Device ID": "GET_DID",
-      "Geo-Location": "GET_LOC",
-      "Batch ID": "GET_BID",
-      "Firmware Version": "GET_FID",
-      "SSID": "GET_SSID",
-      "Thing Name": "GET_THING",
-      "Base Topic": "GET_TOPIC",
+      "Device ID":       "GET_DID",
+      "Geo-Location":    "GET_LOC",
+      "Batch ID":        "GET_BID",
+      "Firmware Version":"GET_FID",
+      "SSID":            "GET_SSID",
+      "Thing Name":      "GET_THING",
+      "Base Topic":      "GET_TOPIC",
     };
 
     final Map<String, String> fetchedConfig = {};
@@ -244,24 +276,17 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     try {
       for (var entry in commands.entries) {
         final result = await _service.readSerialCommand(
-          _selectedPort!,
-          entry.value,
-        );
-
+            _selectedPort!, entry.value);
         fetchedConfig[entry.key] =
         (result == null || result.isEmpty || result.startsWith("Error"))
             ? "N/A"
             : result;
-
-        debugPrint("Synced ${entry.key}: $result");
       }
-
       setState(() {
-        _deviceConfig = fetchedConfig;
+        _deviceConfig  = fetchedConfig;
         _statusMessage = "Configuration Synced";
       });
     } catch (e) {
-      debugPrint("Sync Error: $e");
       setState(() => _statusMessage = "Sync Failed: Device Unreachable");
     } finally {
       setState(() => _isBusy = false);
@@ -274,19 +299,19 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     if (_selectedPort == null || _isBusy) return;
 
     setState(() {
-      _isBusy = true;
-      _progress = 0.0;
+      _isBusy        = true;
+      _progress      = 0.0;
       _statusMessage = "Initializing Secure Provisioning...";
     });
 
     final Map<String, String> data = {
-      "SSID": "SET_SSID:${_ssidController.text}",
-      "Password": "SET_PASS:${_passController.text}",
-      "Thing Name": "SET_THING:${_thingController.text}",
-      "Topic": "SET_TOPIC:${_topicController.text}",
-      "Device ID": "SET_DID:${_deviceIdController.text}",
+      "SSID":        "SET_SSID:${_ssidController.text}",
+      "Password":    "SET_PASS:${_passController.text}",
+      "Thing Name":  "SET_THING:${_thingController.text}",
+      "Topic":       "SET_TOPIC:${_topicController.text}",
+      "Device ID":   "SET_DID:${_deviceIdController.text}",
       "Firmware ID": "SET_FID:${_firmwareController.text}",
-      "Batch ID": "SET_BID:${_batchController.text}",
+      "Batch ID":    "SET_BID:${_batchController.text}",
     };
 
     int completed = 0;
@@ -296,21 +321,16 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     try {
       for (var entry in data.entries) {
         final String command = entry.value;
-        final String value = command.split(':')[1];
-
+        final String value   = command.split(':')[1];
         if (value.isEmpty) continue;
 
         setState(() => _statusMessage = "Writing ${entry.key}...");
-
-        final result = await _service.readSerialCommand(
-          _selectedPort!,
-          command,
-        );
+        final result =
+        await _service.readSerialCommand(_selectedPort!, command);
 
         if (result == "OK") {
           completed++;
           setState(() => _progress = completed / totalCommands);
-          debugPrint("Confirmed: ${entry.key} provisioned.");
         } else {
           throw Exception("Failed to set ${entry.key}: $result");
         }
@@ -318,13 +338,12 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
 
       setState(() {
         _statusMessage = "Provisioning Complete";
-        _progress = 1.0;
+        _progress      = 1.0;
       });
 
       await Future.delayed(const Duration(milliseconds: 500));
       await _syncDeviceConfig();
     } catch (e) {
-      debugPrint("Provisioning Error: $e");
       setState(() => _statusMessage = e.toString().toUpperCase());
     } finally {
       setState(() => _isBusy = false);
@@ -333,12 +352,9 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
 
   Future<void> _sendManualCommand(String fullCommand) async {
     if (_selectedPort == null) return;
-
     setState(() => _statusMessage = "Sending: $fullCommand");
-
     try {
       await _service.readSerialCommand(_selectedPort!, fullCommand);
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -347,7 +363,6 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
           ),
         );
       }
-
       _syncDeviceConfig();
     } catch (e) {
       setState(() => _statusMessage = "Transfer Failed");
@@ -359,7 +374,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
   void _showAndroidWarning() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text("Firmware flashing is only supported on Windows Desktop."),
+        content:
+        Text("Firmware flashing is only supported on Windows Desktop."),
       ),
     );
   }
@@ -371,7 +387,6 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
       body: LayoutBuilder(
@@ -387,7 +402,6 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
               ),
             );
           }
-
           return Row(
             children: [
               Expanded(flex: 3, child: _buildMainPanel(isMobile: false)),
@@ -411,7 +425,9 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
           if (!isMobile) const Spacer(),
           const SizedBox(height: 32),
           _buildStatusIndicator(),
-          const SizedBox(height: 40),
+          const SizedBox(height: 32),
+          _buildFirmwareSourceSelector(),
+          const SizedBox(height: 24),
           _buildFlashActionCard(),
           if (!isMobile) const Spacer(),
           _locationCard(isMobile: isMobile),
@@ -466,6 +482,162 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     );
   }
 
+  // ─── Firmware Source Selector ─────────────────────────────────────────────
+
+  Widget _buildFirmwareSourceSelector() {
+    final bool hasCustomFile = _customFirmwarePath != null;
+    final String fileName    = hasCustomFile
+        ? _customFirmwarePath!.split(Platform.pathSeparator).last
+        : '';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blueGrey.withOpacity(0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Section label ─────────────────────────────────────────
+          const Text(
+            "FIRMWARE SOURCE",
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: Colors.blueGrey,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // ── Toggle chips ──────────────────────────────────────────
+          Row(
+            children: [
+              _firmwareSourceChip(
+                label: "Bundled Default",
+                icon: Icons.inventory_2_outlined,
+                selected: !_useCustomFirmware,
+                onTap: _clearCustomFirmware,
+              ),
+              const SizedBox(width: 8),
+              _firmwareSourceChip(
+                label: "Custom .bin",
+                icon: Icons.folder_open_outlined,
+                selected: _useCustomFirmware,
+                onTap: _pickFirmwareFile,
+              ),
+            ],
+          ),
+
+          // ── Selected file pill ────────────────────────────────────
+          if (hasCustomFile) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade100),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle,
+                      size: 14, color: Colors.blue.shade700),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      fileName,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Courier',
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _clearCustomFirmware,
+                    child: Icon(Icons.close,
+                        size: 14, color: Colors.blue.shade400),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // ── Hint text when bundled ────────────────────────────────
+          if (!_useCustomFirmware) ...[
+            const SizedBox(height: 10),
+            Text(
+              "Will flash the stable firmware bundled with this application.",
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.blueGrey.shade400,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _firmwareSourceChip({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding:
+          const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          decoration: BoxDecoration(
+            color: selected
+                ? Colors.blue.shade700
+                : Colors.blueGrey.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected
+                  ? Colors.blue.shade700
+                  : Colors.blueGrey.withOpacity(0.2),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: selected ? Colors.white : Colors.blueGrey,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? Colors.white : Colors.blueGrey,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Flash Action Card ────────────────────────────────────────────────────
+
   Widget _buildFlashActionCard() {
     final bool canFlash = !_isBusy && _selectedPort != null;
     return AnimatedOpacity(
@@ -480,7 +652,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
             onTap: canFlash ? _handleFlash : null,
             borderRadius: BorderRadius.circular(12),
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+              padding: const EdgeInsets.symmetric(
+                  vertical: 16, horizontal: 24),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Colors.blue.shade800, Colors.blue.shade900],
@@ -488,7 +661,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                border:
+                Border.all(color: Colors.white.withOpacity(0.1)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.blue.withOpacity(0.4),
@@ -501,10 +675,13 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.bolt_rounded, color: Colors.white, size: 22),
+                  const Icon(Icons.bolt_rounded,
+                      color: Colors.white, size: 22),
                   const SizedBox(width: 12),
                   Text(
-                    "UPDATE FIRMWARE",
+                    _useCustomFirmware
+                        ? "FLASH CUSTOM FIRMWARE"
+                        : "UPDATE FIRMWARE",
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.95),
                       fontSize: 14,
@@ -521,6 +698,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     );
   }
 
+  // ─── Location Card ────────────────────────────────────────────────────────
+
   Widget _locationCard({required bool isMobile}) {
     return Padding(
       padding: EdgeInsets.only(top: isMobile ? 20 : 40),
@@ -535,23 +714,23 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                 subtitle: Text("Searching GPS satellites"),
               );
             }
-
             if (snapshot.hasError) {
               return ListTile(
-                leading: const Icon(Icons.error, color: Colors.red),
+                leading:
+                const Icon(Icons.error, color: Colors.red),
                 title: const Text("Location Error"),
                 subtitle: Text(snapshot.error.toString()),
               );
             }
-
             final data = snapshot.data!;
-            final pos = data.position;
-
+            final pos  = data.position;
             return ListTile(
-              leading: const Icon(Icons.place, color: Colors.blue),
+              leading:
+              const Icon(Icons.place, color: Colors.blue),
               title: Text(
                 data.locationName,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style:
+                const TextStyle(fontWeight: FontWeight.bold),
               ),
               subtitle: Text(
                 "Lat: ${pos.latitude.toStringAsFixed(5)} | "
@@ -593,6 +772,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     );
   }
 
+  // ─── Config List ──────────────────────────────────────────────────────────
+
   Widget _buildConfigList() {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -615,7 +796,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
             Color baseColor;
             if (e.key.contains("ID")) {
               baseColor = const Color(0xFF2196F3);
-            } else if (e.key.contains("SSID") || e.key.contains("Topic")) {
+            } else if (e.key.contains("SSID") ||
+                e.key.contains("Topic")) {
               baseColor = const Color(0xFFE91E63);
             } else if (e.key.contains("Thing")) {
               baseColor = const Color(0xFF9C27B0);
@@ -626,10 +808,12 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
             }
 
             return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
+                  bottom: BorderSide(
+                      color: Colors.white.withOpacity(0.1)),
                 ),
                 gradient: LinearGradient(
                   colors: [
@@ -642,14 +826,17 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                 ),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment:
+                MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: baseColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: baseColor.withOpacity(0.3)),
+                      border: Border.all(
+                          color: baseColor.withOpacity(0.3)),
                     ),
                     child: Text(
                       e.key.toUpperCase(),
@@ -668,7 +855,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                       style: TextStyle(
                         fontFamily: 'Courier',
                         fontWeight: FontWeight.bold,
-                        color: const Color(0xFF2C3E50).withOpacity(0.85),
+                        color: const Color(0xFF2C3E50)
+                            .withOpacity(0.85),
                         fontSize: 13,
                       ),
                     ),
@@ -682,18 +870,22 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
     );
   }
 
+  // ─── Port Card ────────────────────────────────────────────────────────────
+
   Widget _buildPortCard() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding:
+      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.blueGrey.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blueGrey.withOpacity(0.2)),
+        border:
+        Border.all(color: Colors.blueGrey.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header row ────────────────────────────────────────────
+          // ── Header ──────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -706,9 +898,9 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                   color: Colors.blueGrey,
                 ),
               ),
-              // Port status pill
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: _isPortOpen
                       ? Colors.green.withOpacity(0.12)
@@ -728,7 +920,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                       height: 6,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: _isPortOpen ? Colors.green : Colors.red,
+                        color:
+                        _isPortOpen ? Colors.green : Colors.red,
                       ),
                     ),
                     const SizedBox(width: 5),
@@ -751,7 +944,7 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
 
           const SizedBox(height: 8),
 
-          // ── Dropdown + Rescan ──────────────────────────────────────
+          // ── Dropdown + Rescan ────────────────────────────────────
           Row(
             children: [
               Expanded(
@@ -760,7 +953,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                     isExpanded: true,
                     value: _selectedPort,
                     hint: const Text("Select Port..."),
-                    icon: const Icon(Icons.arrow_drop_down_circle_outlined),
+                    icon: const Icon(
+                        Icons.arrow_drop_down_circle_outlined),
                     items: _availablePorts
                         .map((p) => DropdownMenuItem(
                       value: p,
@@ -775,7 +969,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                         .toList(),
                     onChanged: _isPortOpen
                         ? null
-                        : (v) => setState(() => _selectedPort = v),
+                        : (v) =>
+                        setState(() => _selectedPort = v),
                   ),
                 ),
               ),
@@ -783,9 +978,12 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                 icon: Icon(
                   Icons.refresh,
                   size: 20,
-                  color: (_isBusy || _isPortOpen) ? Colors.grey : Colors.blue,
+                  color: (_isBusy || _isPortOpen)
+                      ? Colors.grey
+                      : Colors.blue,
                 ),
-                onPressed: (_isBusy || _isPortOpen) ? null : _scanPorts,
+                onPressed:
+                (_isBusy || _isPortOpen) ? null : _scanPorts,
                 tooltip: "Rescan Hardware",
               ),
             ],
@@ -795,7 +993,7 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
           const Divider(height: 1),
           const SizedBox(height: 12),
 
-          // ── Action Buttons Row ─────────────────────────────────────
+          // ── Action Buttons ───────────────────────────────────────
           Row(
             children: [
               Expanded(
@@ -804,16 +1002,22 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                   icon: Icons.usb_rounded,
                   tooltip: "Confirm selected port",
                   color: Colors.blueGrey,
-                  onPressed: (_selectedPort == null || _isBusy || _isPortOpen)
+                  onPressed: (_selectedPort == null ||
+                      _isBusy ||
+                      _isPortOpen)
                       ? null
                       : () {
-                    setState(() =>
-                    _statusMessage = "Port $_selectedPort Selected");
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    setState(() => _statusMessage =
+                    "Port $_selectedPort Selected");
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(
                       SnackBar(
-                        content: Text("Port $_selectedPort selected"),
-                        duration: const Duration(seconds: 1),
-                        backgroundColor: Colors.blueGrey.shade700,
+                        content: Text(
+                            "Port $_selectedPort selected"),
+                        duration:
+                        const Duration(seconds: 1),
+                        backgroundColor:
+                        Colors.blueGrey.shade700,
                       ),
                     );
                   },
@@ -826,7 +1030,9 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                   icon: Icons.lock_open_rounded,
                   tooltip: "Open serial connection",
                   color: Colors.green,
-                  onPressed: (_selectedPort == null || _isBusy || _isPortOpen)
+                  onPressed: (_selectedPort == null ||
+                      _isBusy ||
+                      _isPortOpen)
                       ? null
                       : _openPort,
                 ),
@@ -839,7 +1045,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                   tooltip: "Close serial connection",
                   color: Colors.red,
                   isDestructive: true,
-                  onPressed: (!_isPortOpen || _isBusy) ? null : _closePort,
+                  onPressed:
+                  (!_isPortOpen || _isBusy) ? null : _closePort,
                 ),
               ),
             ],
@@ -880,18 +1087,22 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                 : Colors.grey.withOpacity(0.06),
             foregroundColor: enabled ? color : Colors.grey,
             elevation: 0,
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            padding: const EdgeInsets.symmetric(
+                vertical: 10, horizontal: 6),
             side: BorderSide(
               color: enabled
                   ? color.withOpacity(0.35)
                   : Colors.grey.withOpacity(0.2),
             ),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8)),
           ),
         ),
       ),
     );
   }
+
+  // ─── Manual Entry / Provisioning Box ─────────────────────────────────────
 
   Widget _buildManualEntryBox() {
     return Container(
@@ -900,7 +1111,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blueGrey.withOpacity(0.1)),
+        border:
+        Border.all(color: Colors.blueGrey.withOpacity(0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -978,9 +1190,11 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
             width: double.infinity,
             height: 45,
             child: ElevatedButton.icon(
-              onPressed:
-              (_isBusy || _selectedPort == null) ? null : _handleBatchProvisioning,
-              icon: const Icon(Icons.send_and_archive_rounded, size: 18),
+              onPressed: (_isBusy || _selectedPort == null)
+                  ? null
+                  : _handleBatchProvisioning,
+              icon: const Icon(Icons.send_and_archive_rounded,
+                  size: 18),
               label: const Text("PROVISION HARDWARE"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue.shade700,
@@ -1010,11 +1224,14 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
         hintText: hint,
         prefixIcon: Icon(icon, size: 16),
         border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        contentPadding:
+        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         isDense: true,
       ),
     );
   }
+
+  // ─── Side Buttons ─────────────────────────────────────────────────────────
 
   Widget _buildSideButtons() {
     return Column(
@@ -1046,7 +1263,8 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
       height: 50,
       child: ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
-          backgroundColor: isDestructive ? Colors.red.shade50 : Colors.white,
+          backgroundColor:
+          isDestructive ? Colors.red.shade50 : Colors.white,
           foregroundColor:
           isDestructive ? Colors.red : Colors.blueGrey.shade800,
           elevation: 0,
@@ -1055,13 +1273,16 @@ class _FirmwareFlashPageState extends State<FirmwareFlashPage>
                 ? Colors.red.withOpacity(0.5)
                 : Colors.blueGrey.withOpacity(0.2),
           ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
         ),
-        onPressed: (_isBusy || _selectedPort == null) ? null : action,
+        onPressed:
+        (_isBusy || _selectedPort == null) ? null : action,
         icon: Icon(icon, size: 18),
         label: Text(
           label,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          style: const TextStyle(
+              fontWeight: FontWeight.bold, fontSize: 12),
         ),
       ),
     );

@@ -75,9 +75,12 @@ class EsptoolService {
 
       _subscription = SerialPortReader(port).stream.listen(
             (Uint8List bytes) {
-          final hex = bytes.map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}').join(' ');
-          final ascii = String.fromCharCodes(bytes.map((b) => (b >= 32 && b < 127) ? b : 46));
-          debugPrint("[RX RAW] ${bytes.length} bytes | HEX: $hex | ASCII: '$ascii'");
+          final hex = bytes.map((b) => '0x${b.toRadixString(16).padLeft(
+              2, '0')}').join(' ');
+          final ascii = String.fromCharCodes(
+              bytes.map((b) => (b >= 32 && b < 127) ? b : 46));
+          debugPrint(
+              "[RX RAW] ${bytes.length} bytes | HEX: $hex | ASCII: '$ascii'");
           _rxBuffer.addAll(bytes);
         },
         onError: (e) => debugPrint("[RX ERROR] $e"),
@@ -88,12 +91,12 @@ class EsptoolService {
       await Future.delayed(const Duration(milliseconds: 2000));
       debugPrint("[PORT] Ready.");
       return true;
-
     } catch (e) {
       debugPrint("[PORT] Exception: $e");
       return false;
     }
   }
+
 // ─── Public Port Control (called from UI) ────────────────────────────────
 
   Future<bool> openPort(String portName) async {
@@ -107,7 +110,8 @@ class EsptoolService {
   }
 
   bool isPortOpen(String portName) {
-    return _port != null && _openPortName == portName && (_port?.isOpen ?? false);
+    return _port != null && _openPortName == portName &&
+        (_port?.isOpen ?? false);
   }
 
   void _closePort() {
@@ -149,43 +153,46 @@ class EsptoolService {
 
       // ── TX ────────────────────────────────────────────────────────────────
       final cmdBytes = Uint8List.fromList('$command\n'.codeUnits);
-    final written = _port!.write(cmdBytes);
-    debugPrint("[TX] '$command\\n' → $written / ${cmdBytes.length} bytes written");
+      final written = _port!.write(cmdBytes);
+      debugPrint(
+          "[TX] '$command\\n' → $written / ${cmdBytes.length} bytes written");
 
-    if (written != cmdBytes.length) {
-    debugPrint("[TX] WARNING: partial write ($written of ${cmdBytes.length})");
-    }
+      if (written != cmdBytes.length) {
+        debugPrint(
+            "[TX] WARNING: partial write ($written of ${cmdBytes.length})");
+      }
 
-    // ── WAIT FOR LINE ─────────────────────────────────────────────────────
-    debugPrint("[CMD] Waiting for response to '$command'...");
-    final String? response = await _waitForLine(
-    timeout: const Duration(seconds: 5),
-    );
+      // ── WAIT FOR LINE ─────────────────────────────────────────────────────
+      debugPrint("[CMD] Waiting for response to '$command'...");
+      final String? response = await _waitForLine(
+        timeout: const Duration(seconds: 5),
+      );
 
-    if (response == null) {
-    debugPrint(
-    "[CMD] TIMEOUT for '$command'. Buffer: ${_rxBuffer.length} bytes.");
-    if (_rxBuffer.isNotEmpty) {
-    final hex = _rxBuffer
-        .map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}')
-        .join(' ');
-    debugPrint("[CMD] Buffer at timeout HEX: $hex");
-    debugPrint(
-    "[CMD] Buffer ASCII: '${String.fromCharCodes(_rxBuffer.map((b) => (b >= 32 && b < 127) ? b : 46))}'");
-    } else {
-    debugPrint("[CMD] Buffer EMPTY → ESP sent NOTHING back.");
-    }
-    }
+      if (response == null) {
+        debugPrint(
+            "[CMD] TIMEOUT for '$command'. Buffer: ${_rxBuffer.length} bytes.");
+        if (_rxBuffer.isNotEmpty) {
+          final hex = _rxBuffer
+              .map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}')
+              .join(' ');
+          debugPrint("[CMD] Buffer at timeout HEX: $hex");
+          debugPrint(
+              "[CMD] Buffer ASCII: '${String.fromCharCodes(
+                  _rxBuffer.map((b) => (b >= 32 && b < 127) ? b : 46))}'");
+        } else {
+          debugPrint("[CMD] Buffer EMPTY → ESP sent NOTHING back.");
+        }
+      }
 
-    debugPrint("[CMD] '$command' → response: '$response'");
-    return response;
+      debugPrint("[CMD] '$command' → response: '$response'");
+      return response;
     } catch (e) {
-    debugPrint("[CMD] Exception: $e");
-    _closePort();
-    return "Error: $e";
+      debugPrint("[CMD] Exception: $e");
+      _closePort();
+      return "Error: $e";
     } finally {
-    await Future.delayed(const Duration(milliseconds: 200));
-    _isPortBusy = false;
+      await Future.delayed(const Duration(milliseconds: 200));
+      _isPortBusy = false;
     }
   }
 
@@ -231,15 +238,20 @@ class EsptoolService {
 
   Future<void> writeFlash({
     required String port,
+    String? firmwarePath, // ← add this
     required Function(String) onStatus,
     required Function(double) onProgress,
   }) async {
     forceCloseAllPorts();
     if (_localEsptoolPath == null) await initAssets();
+
+    final String binPath = firmwarePath ?? _localFirmwarePath!; // ← fallback
+
     final process = await Process.start(_localEsptoolPath!, [
       '--chip', 'esp8266', '--port', port, '--baud', '115200',
-      'write_flash', '-fm', 'dio', '0x00000', _localFirmwarePath!
+      'write_flash', '-fm', 'dio', '0x00000', binPath // ← use binPath
     ]);
+
     process.stdout.transform(utf8.decoder).listen((data) {
       final RegExp regExp = RegExp(r'(\d+)\s*%');
       final matches = regExp.allMatches(data);
@@ -251,6 +263,7 @@ class EsptoolService {
       }
       onStatus(data);
     });
+
     await process.exitCode;
   }
 }

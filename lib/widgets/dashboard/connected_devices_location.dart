@@ -99,12 +99,11 @@ class ConnectedDevicesLocation extends StatelessWidget {
     );
   }
 
-  /// --- DEVICE CARD (simple temperature & humidity display) ---
   Widget _buildDeviceCard(String deviceId, Map<String, String> data,
       String status, {double? width}) {
     final temp = data['temperature'] ?? '--';
     final hum = data['humidity'] ?? '--';
-    final turb=data['turbidity'] ?? '--';
+    final turb = data['turbidity'] ?? '--';
     final isOnline = status == 'connected';
 
     return Container(
@@ -128,10 +127,10 @@ class ConnectedDevicesLocation extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          /// Left: Device ID + Status Indicator
+          /// Device ID + Online pill
           Row(
             children: [
               Icon(
@@ -140,19 +139,27 @@ class ConnectedDevicesLocation extends StatelessWidget {
                 size: 10,
               ),
               const SizedBox(width: 8),
-              Text(
-                deviceId,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: app_colors.slateGrey,
-                  fontSize: 15,
+              Expanded(
+                child: Text(
+                  deviceId,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: app_colors.slateGrey,
+                    fontSize: 15,
+                  ),
                 ),
               ),
             ],
           ),
 
-          /// Right: Temperature & Humidity
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+
+          /// Metrics — spaceAround so they never overflow
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildMetric(
                 icon: Icons.thermostat,
@@ -160,14 +167,12 @@ class ConnectedDevicesLocation extends StatelessWidget {
                 value: '$temp°C',
                 color: app_colors.activeBlue,
               ),
-              const SizedBox(width: 20),
               _buildMetric(
                 icon: Icons.water_drop,
                 label: 'Hum',
                 value: '$hum%',
                 color: Colors.teal,
               ),
-              const SizedBox(width: 20),
               _buildMetric(
                 icon: Icons.scatter_plot_outlined,
                 label: 'Turb',
